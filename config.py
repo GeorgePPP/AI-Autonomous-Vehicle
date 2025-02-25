@@ -7,8 +7,9 @@ MODALITIES = ["text", "audio"]
 AUDIO = {"voice": "alloy", "format": "wav"}
 
 # input
-USER_INPUT = "Why is your name ND II"
+USER_INPUT = "What are some good foods in Singapore"
 
 # output
-FILE_NAME = "name_reason"
+OUTPUT_DIR = "output"
+FILE_NAME = "food_in_Singapore"
 FILE_EXT = ".wav"
