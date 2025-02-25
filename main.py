@@ -45,10 +45,18 @@ async def get_response(user_input: str = Form(...)):
             audio_path = file_path
         
         # Return the response text and audio path if available
+        # Assume audio response
+        if response.audio.transcript:
+            text_output = response.audio.transcript
+        else:
+            text_output = "There's no transcription, please find the audio below for my response." 
+
         return JSONResponse({
-            "response": str(response),
-            "audio_path": audio_path
+            "response": text_output,
+            "audio_base64": response.audio.data,
+            "audio_path": str(audio_path)
         })
+
     except Exception as e:
         return JSONResponse({
             "response": f"I apologize, but I encountered an error: {str(e)}. Please try again.",

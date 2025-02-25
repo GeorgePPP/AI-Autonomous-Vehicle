@@ -1,6 +1,3 @@
-// You can move the JavaScript from index.html to this file if you prefer
-// Just add a script tag in index.html: <script src="/static/script.js"></script>
-
 document.addEventListener('DOMContentLoaded', function() {
     const chatForm = document.getElementById('chatForm');
     const userInput = document.getElementById('userInput');
@@ -66,18 +63,17 @@ document.addEventListener('DOMContentLoaded', function() {
             // Hide typing indicator
             hideTypingIndicator();
             
-            // Add bot response to chat
+            // if (data.response) {
+            //         // Add bot response to chat
+            //         const botMessageDiv = addMessage(data.response, false);
+            // }
+
             const botMessageDiv = addMessage(data.response, false);
             
-            // Add audio player if audio is available
-            if (data.audio_path) {
-                const audioPlayer = document.createElement('audio');
-                audioPlayer.controls = true;
-                audioPlayer.classList.add('audio-player');
-                audioPlayer.src = data.audio_path;
-                botMessageDiv.appendChild(audioPlayer);
+            // Add audio player if audio is availables
+            if (data.audio_base64) {
+                playBase64Audio(data.audio_base64);
             }
-            
         } catch (error) {
             // Hide typing indicator
             hideTypingIndicator();
@@ -88,3 +84,27 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// Function to play Audio
+function playBase64Audio(base64String) {
+    // Create an AudioContext
+    const context = new (window.AudioContext || window.webkitAudioContext)();
+
+    // Convert Base64 string to binary data
+    let binaryString = atob(base64String);
+    let len = binaryString.length;
+    let bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // Decode the audio data and play
+    context.decodeAudioData(bytes.buffer, (audioBuffer) => {
+        let source = context.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(context.destination);
+        source.start(0);
+    }, (error) => {
+        console.error("Error decoding audio:", error);
+    });
+}
