@@ -6,6 +6,7 @@
 function createModernVisualizer() {
     const container = document.createElement('div');
     container.classList.add('ai-visualizer-container');
+    container.style.display = 'none';
     
     // Create SVG content
     container.innerHTML = `
@@ -125,12 +126,11 @@ function createModernVisualizer() {
 
 // Function to show/hide visualizer
 function toggleVisualizer(visualizer, isActive) {
-    if (visualizer) {
-        if (isActive) {
-            visualizer.classList.add('active');
-        } else {
-            visualizer.classList.remove('active');
-        }
+    if (!visualizer) return
+    if (isActive) {
+        visualizer.style.display = 'block';
+    } else {
+        visualizer.style.display = 'none';
     }
 }
 
@@ -168,9 +168,15 @@ function playBase64AudioWithVisualizer(base64String, visualizer) {
         
         // When audio ends, hide visualizer
         source.onended = function() {
+            console.log("Audio playback ended");
             toggleVisualizer(visualizer, false);
+            source.disconnect();
+            analyzer.disconnect();
         };
-        
+
+        // Calculate exact duration based on the audio buffer
+        const exactDuration = audioBuffer.duration * 1000; // convert to m
+
         // Fallback for older browsers that don't support onended
         setTimeout(() => {
             toggleVisualizer(visualizer, false);

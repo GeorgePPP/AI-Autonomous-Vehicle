@@ -34,11 +34,11 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Add bot response to chat
             const botMessageDiv = addMessage(data.response, false, chatMessages, typingIndicator);
+            const visualizer = createModernVisualizer();
+            botMessageDiv.appendChild(visualizer);
             
             // Add audio player if audio is available
             if (data.audio_base64) {
-                const visualizer = createModernVisualizer();
-                botMessageDiv.appendChild(visualizer);
                 
                 // Play audio with visualizer
                 playBase64AudioWithVisualizer(data.audio_base64, visualizer);
