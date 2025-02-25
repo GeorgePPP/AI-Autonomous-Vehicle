@@ -1,35 +1,13 @@
+/**
+ * Main application script
+ */
+
 document.addEventListener('DOMContentLoaded', function() {
+    // Get DOM elements
     const chatForm = document.getElementById('chatForm');
     const userInput = document.getElementById('userInput');
     const chatMessages = document.getElementById('chatMessages');
     const typingIndicator = document.getElementById('typingIndicator');
-    
-    // Function to add a message to the chat
-    function addMessage(message, isUser) {
-        const messageDiv = document.createElement('div');
-        messageDiv.classList.add('message');
-        messageDiv.classList.add(isUser ? 'user-message' : 'bot-message');
-        messageDiv.textContent = message;
-        
-        // Insert before typing indicator
-        chatMessages.insertBefore(messageDiv, typingIndicator);
-        
-        // Scroll to bottom
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-        
-        return messageDiv;
-    }
-    
-    // Function to show typing indicator
-    function showTypingIndicator() {
-        typingIndicator.style.display = 'block';
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-    
-    // Function to hide typing indicator
-    function hideTypingIndicator() {
-        typingIndicator.style.display = 'none';
-    }
     
     // Handle form submission
     chatForm.addEventListener('submit', async function(e) {
@@ -39,72 +17,39 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!message) return;
         
         // Add user message to chat
-        addMessage(message, true);
+        addMessage(message, true, chatMessages, typingIndicator);
         
         // Clear input field
         userInput.value = '';
         
         // Show typing indicator
-        showTypingIndicator();
+        showTypingIndicator(typingIndicator, chatMessages);
         
         try {
-            // Create form data for the request
-            const formData = new FormData();
-            formData.append('user_input', message);
-            
             // Send request to get response
-            const response = await fetch('/get_response', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const data = await response.json();
+            const data = await sendMessageToServer(message);
             
             // Hide typing indicator
-            hideTypingIndicator();
+            hideTypingIndicator(typingIndicator);
             
-            // if (data.response) {
-            //         // Add bot response to chat
-            //         const botMessageDiv = addMessage(data.response, false);
-            // }
-
-            const botMessageDiv = addMessage(data.response, false);
+            // Add bot response to chat
+            const botMessageDiv = addMessage(data.response, false, chatMessages, typingIndicator);
             
-            // Add audio player if audio is availables
+            // Add audio player if audio is available
             if (data.audio_base64) {
-                playBase64Audio(data.audio_base64);
+                const visualizer = createModernVisualizer();
+                botMessageDiv.appendChild(visualizer);
+                
+                // Play audio with visualizer
+                playBase64AudioWithVisualizer(data.audio_base64, visualizer);
             }
         } catch (error) {
             // Hide typing indicator
-            hideTypingIndicator();
+            hideTypingIndicator(typingIndicator);
             
             // Add error message
-            addMessage("Sorry, I encountered an error. Please try again.", false);
+            addMessage("Sorry, I encountered an error. Please try again.", false, chatMessages, typingIndicator);
             console.error('Error:', error);
         }
     });
 });
-
-// Function to play Audio
-function playBase64Audio(base64String) {
-    // Create an AudioContext
-    const context = new (window.AudioContext || window.webkitAudioContext)();
-
-    // Convert Base64 string to binary data
-    let binaryString = atob(base64String);
-    let len = binaryString.length;
-    let bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-
-    // Decode the audio data and play
-    context.decodeAudioData(bytes.buffer, (audioBuffer) => {
-        let source = context.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(context.destination);
-        source.start(0);
-    }, (error) => {
-        console.error("Error decoding audio:", error);
-    });
-}
