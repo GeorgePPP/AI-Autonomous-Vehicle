@@ -138,7 +138,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     continue
                     
                 try:
-                    response = nd_ii.send_message(
+                    response = await nd_ii.send_message(
                         user_input="",  # Empty for audio-only
                         audio_base64=audio_base64,
                         audio_format=audio_format,
@@ -146,10 +146,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         use_cot=config.USE_COT,
                         modalities=config.MODALITIES,
                         audio=config.AUDIO
-                    )
-
-                    print(f"Response Object: {response}")
-                    
+                    )                    
                     # Process the response
                     text_output, response_audio = process_nd_ii_response(response)
                     

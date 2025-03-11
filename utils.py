@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import os
 import io
@@ -57,7 +58,7 @@ def convert_audio_format(base64_audio, source_format, target_format='wav'):
     
     except Exception as e:
         print(f"Error converting audio: {e}")
-        return base64_audio  # Return original if conversion fails
+        return None  # Return None to indicate failure instead of returning original
     
     finally:
         # Clean up temporary files
@@ -66,37 +67,50 @@ def convert_audio_format(base64_audio, source_format, target_format='wav'):
         if os.path.exists(target_path):
             os.remove(target_path)
 
-def prepare_audio_message(base64_audio, audio_format='wav'):
+
+async def prepare_audio_message(base64_audio, audio_format='webm'):
     """
-    Prepare audio data to be sent to OpenAI API.
+    Prepare audio data to be sent to OpenAI API asynchronously.
     
     Args:
         base64_audio: String containing base64-encoded audio data
-        audio_format: Format of the audio (default: 'wav')
+        audio_format: Original format of the audio (default: 'webm')
         
     Returns:
         dict: Formatted message content with audio data for the API
     """
-    # Ensure format is supported by OpenAI
-    try:
-        # Try to convert the audio to a supported format
-        print(f"Converting audio from {audio_format} to wav format")
-        base64_audio_wav = convert_audio_format(base64_audio, audio_format, 'wav')
-    except Exception as e:
-        print(f"Audio conversion failed: {e}, defaulting to wav format")
-        audio_format = 'wav'  # Default to wav even though conversion failed
-
-    # Create the audio data component
-    audio_component = {
-        "type": "input_audio",
-        "input_audio": {
-            "data": base64_audio_wav,
-            "format": audio_format
-        }
-    }
+    # Always convert to a supported format (wav)
+    target_format = 'wav'  # OpenAI supports 'wav' and 'mp3'
     
-    # Return the prepared content for the message
-    return audio_component
+    try:
+        # Convert the audio to a supported format
+        print(f"Converting audio from {audio_format} to {target_format} format")
+        
+        # Run CPU-intensive conversion in a separate thread pool
+        loop = asyncio.get_running_loop()
+        converted_audio = await loop.run_in_executor(
+            None, 
+            lambda: convert_audio_format(base64_audio, audio_format, target_format)
+        )
+        
+        if converted_audio is None:
+            raise ValueError(f"Failed to convert audio from {audio_format} to {target_format}")
+            
+        # Create the audio data component
+        audio_component = {
+            "type": "input_audio",
+            "input_audio": {
+                "data": converted_audio,
+                "format": target_format
+            }
+        }
+        
+        return audio_component
+        
+    except Exception as e:
+        print(f"Audio preparation failed: {e}")
+        raise
+
 
 def test_base_64_string(audio_base64):
     """
