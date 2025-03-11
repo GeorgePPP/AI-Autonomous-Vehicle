@@ -44,10 +44,6 @@ def process_nd_ii_response(response):
     else:
         print("Audio data is not present in the response.")
     
-    # Extract text content if available
-    if hasattr(response, 'content'):
-        text_output = response.content
-    
     # Default fallback message
     if not text_output:
         text_output = "I received your message."
