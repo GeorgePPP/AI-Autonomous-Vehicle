@@ -1,19 +1,22 @@
 import asyncio
 import json
+import base64
+import io
 from openai import AsyncOpenAI
 import time
-from typing import List, Dict, Optional, Union, Any
+from typing import List, Dict, Optional, Union, Any, Tuple
 from pathlib import Path
 from utils import prepare_audio_message
 
 class NDII:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, max_history: int = 2):
         self.client = AsyncOpenAI()
         self.api_key = api_key
         self.client.api_key = api_key
         self.prompt_templates = self._load_prompts()
         self.conversation_history = []
         self.current_context = {}
+        self.max_history = max_history
         
     def _load_prompts(self) -> Dict:
         """Load prompt templates from the prompts directory"""
@@ -64,16 +67,6 @@ class NDII:
         
         return {"role": "system", "content": text_content}
     
-    def _add_few_shot_examples(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Add few-shot examples to the message history"""
-        examples = self.prompt_templates["few_shot_examples"]
-        for example in examples:
-            messages.extend([
-                {"role": "user", "content": example["user"]},
-                {"role": "assistant", "content": example["assistant"]}
-            ])
-        return messages
-    
     def _prepare_messages(
         self, 
         audio_data: Optional[Dict] = None,
@@ -92,7 +85,7 @@ class NDII:
         # Start with system message (including embedded few-shot examples)
         messages = [self._build_system_message()]
         
-        # Add conversation history (excluding the current user input)
+        # Add conversation history (only the latest ones, based on max_history)
         messages.extend(self.conversation_history)
         
         # Create the user message with proper content formatting
@@ -112,16 +105,56 @@ class NDII:
     
         return messages
 
+    async def generate_speech(self, text: str, voice: str = "alloy", format: str = "wav") -> Optional[str]:
+        """
+        Generate text-to-speech audio using OpenAI's TTS API
+        
+        Args:
+            text: The text to convert to speech
+            voice: The voice to use
+            format: The audio format
+            
+        Returns:
+            base64-encoded audio data
+        """
+        try:
+            print(f"Generating TTS for: '{text[:50]}...' using voice: {voice}")
+            
+            # Call OpenAI's TTS API
+            response = await self.client.audio.speech.create(
+                model="tts-1",  # Using a stable TTS model
+                voice=voice,
+                input=text,
+                response_format=format
+            )
+            
+            # Get binary audio data - response is already bytes, no need to await
+            # The error was here - response.read() is not awaitable
+            audio_data = response.content
+            
+            # Convert to base64 for transmission
+            base64_audio = base64.b64encode(audio_data).decode('utf-8')
+            
+            print(f"TTS generated successfully: {len(base64_audio)/1024:.2f} KB")
+            return base64_audio
+            
+        except Exception as e:
+            print(f"Error generating speech: {e}")
+            return None
+
     async def send_message(
         self, 
         audio_base64: Optional[str] = None,
         audio_format: str = "wav",
         use_cot: bool = False,
         **kwargs
-    ) -> Any:
+    ) -> Tuple[str, Optional[str]]:
         """
         Send a message to ND II and get a response.
         Supports both text and audio inputs formatted for OpenAI API.
+        
+        Returns:
+            Tuple of (text_response, audio_base64)
         """
         # Prepare audio data if provided
         audio_data = None
@@ -129,17 +162,17 @@ class NDII:
             # Validate the audio data
             if not audio_base64 or len(audio_base64) < 100:
                 print("Invalid audio data received")
-                return "I couldn't hear your message clearly. Could you try again?"
+                return "I couldn't hear your message clearly. Could you try again?", None
                 
             try:
                 # Prepare the audio data for the API
                 audio_data = await prepare_audio_message(audio_base64, audio_format)
                 if not audio_data:
                     print("Failed to prepare audio data")
-                    return "There was an issue processing your audio. Please try again."
+                    return "There was an issue processing your audio. Please try again.", None
             except Exception as e:
                 print(f"Error preparing audio: {e}")
-                return f"There was an error processing your audio: {str(e)}"
+                return f"There was an error processing your audio: {str(e)}", None
         
         # Prepare messages for the API
         messages = self._prepare_messages(
@@ -149,6 +182,7 @@ class NDII:
         
         try:
             print(f"Sending request with prepared messages.")
+            
             # Create the chat completion
             response = await self.client.chat.completions.create(
                 messages=messages,
@@ -156,22 +190,42 @@ class NDII:
             )
             
             if response.choices:
-                # TODO: Transcribe user audio input here
-                # Store the assistant's response in history
-                assistant_message = response.choices[0].message
+                # Get the text response
+                text_output = response.choices[0].message.content
                 
+                if not text_output:
+                    text_output = "I processed your request but couldn't generate a response."
                 
-                # Add to conversation history
+                # Add user input placeholder to history
+                self.conversation_history.append({
+                    "role": "user",
+                    "content": "[Audio Input]"  # Placeholder for user's audio input
+                })
+                
+                # Add assistant response to history
                 self.conversation_history.append({
                     "role": "assistant", 
-                    "content": assistant_message.audio.transcript
+                    "content": text_output
                 })
-
-                return assistant_message
+                
+                # Generate audio from the text response
+                audio_config = kwargs.get('audio', {})
+                voice = audio_config.get('voice', 'alloy')
+                audio_format = audio_config.get('format', 'wav')
+                
+                audio_base64 = await self.generate_speech(
+                    text=text_output,
+                    voice=voice,
+                    format=audio_format
+                )
+                
+                return text_output, audio_base64
+            else:
+                return "I didn't receive a response. Please try again.", None
             
         except Exception as e:
             print(f"Error making request: {e}")
-            return f"I encountered an error while processing your request: {str(e)}"
+            return f"I encountered an error while processing your request: {str(e)}", None
             
     def reset_conversation(self):
         """Reset the conversation history"""

@@ -16,7 +16,6 @@ from datetime import datetime
 from utils import get_api_key, test_base_64_string
 from chatbot import NDII
 import config
-
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,48 +27,17 @@ app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 
 # Initialize ND II with API key
 api_key = get_api_key()
-nd_ii = NDII(api_key)
+nd_ii = NDII(api_key, max_history=2)  # Keep only last 2 exchanges
 
 # Store active sessions
 sessions = {}
 
-# Session management
-async def cleanup_sessions():
-    """Remove expired sessions periodically"""
-    while True:
-        current_time = datetime.now()
-        expired_sessions = [
-            session_id for session_id, session_data in sessions.items()
-            if (current_time - session_data["created_at"]).total_seconds() > config.SESSION_MAX_AGE
-        ]
-        
-        for session_id in expired_sessions:
-            del sessions[session_id]
-        
-        if expired_sessions:
-            logger.info(f"Cleaned up {len(expired_sessions)} expired sessions")
-            
-        await asyncio.sleep(config.SESSION_CLEANUP_INTERVAL)
-
 def process_nd_ii_response(response):
     """Process NDII response and extract text and audio data"""
-    audio_base64 = None
-    text_output = None
+    # For the updated implementation, response is now a tuple of (text_output, audio_base64)
+    text_output, audio_base64 = response
     
-    # Handle string responses directly
-    if isinstance(response, str):
-        return response, None
-        
-    # Extract audio data if available
-    if hasattr(response, 'audio') and response.audio:
-        if hasattr(response.audio, 'data'):
-            audio_base64 = response.audio.data
-        if hasattr(response.audio, 'transcript'):
-            text_output = response.audio.transcript
-    else:
-        logger.info("Audio data is not present in the response.")
-    
-    # Default fallback message
+    # Default fallback message if text is empty
     if not text_output:
         text_output = "I received your message."
         
@@ -80,7 +48,6 @@ def add_messages_to_session(session_id, user_content, bot_content, bot_audio=Non
     if session_id not in sessions:
         logger.warning(f"Session {session_id} not found when adding messages")
         return False
-        
     # Add user message
     sessions[session_id]["messages"].append({
         "sender": "user",
@@ -95,27 +62,17 @@ def add_messages_to_session(session_id, user_content, bot_content, bot_audio=Non
         "audio_base64": bot_audio,
         "timestamp": datetime.now()
     })
-    
     return True
-
-@app.on_event("startup")
-async def startup_event():
-    """Start background tasks on app startup"""
-    asyncio.create_task(cleanup_sessions())
-    logger.info("Session cleanup task started")
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    """Home page route that creates a new session"""
     # Generate a unique session ID
     session_id = str(uuid.uuid4())
     sessions[session_id] = {
         "messages": [],
         "created_at": datetime.now()
     }
-    
-    logger.info(f"New session created: {session_id}")
-    
+    logger.info(f"New session created: {session_id}")    
     return templates.TemplateResponse("index.html", {
         "request": request,
         "session_id": session_id,
@@ -138,19 +95,16 @@ async def get_chat_messages(request: Request, session_id: str):
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for real-time communication"""
     await websocket.accept()
-    logger.info(f"WebSocket connection opened for session: {session_id}")
+    print("connection open")
     
     if session_id not in sessions:
-        logger.warning(f"Invalid session ID in WebSocket connection: {session_id}")
         await websocket.close()
         return
     
     try:
         while True:
             data = await websocket.receive_text()
-            
             try:
                 data = json.loads(data)
             except json.JSONDecodeError:
@@ -173,17 +127,14 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 audio_format = data.get("format", "wav")
                 
                 if not audio_base64 or not test_base_64_string(audio_base64):
-                    logger.warning("Invalid audio data received")
                     await websocket.send_json({
                         "type": "error",
                         "message": "Invalid audio data"
                     })
                     continue
-                
-                logger.info(f"Processing audio input (format: {audio_format})")
                     
                 try:
-                    # Process audio with ND II
+                    # Send to ND II for processing - now returns tuple of (text, audio_base64)
                     response = await nd_ii.send_message(
                         audio_base64=audio_base64,
                         audio_format=audio_format,
@@ -193,39 +144,44 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         audio=config.AUDIO
                     )                    
                     
-                    # Process the response
+                    # Process the response - unpack the tuple
                     text_output, response_audio = process_nd_ii_response(response)
-                    
                     logger.info(f"Response received - Audio output: {'Yes' if response_audio else 'No'}")
                     
                     # Add messages to session
-                    success = add_messages_to_session(session_id, "[Audio Input]", text_output, response_audio)
+                    add_messages_to_session(session_id, "[Audio Input]", text_output, response_audio)
+                    print(f"Added to session - Audio data present: {bool(response_audio)}")
                     
-                    if success:
-                        # Send success response
-                        await websocket.send_json({"type": "chat_updated", "success": True})
-                    else:
-                        await websocket.send_json({
-                            "type": "error",
-                            "message": "Failed to update chat session"
-                        })
-                    
+                    # Send success response
+                    await websocket.send_json({"type": "chat_updated", "success": True})                    
                 except Exception as e:
-                    logger.error(f"Error processing audio: {str(e)}", exc_info=True)
+                    print(f"Error processing audio: {str(e)}")
                     await websocket.send_json({
                         "type": "error",
                         "message": f"Error processing audio: {str(e)}"
                     })
-            else:
-                logger.info(f"Received unknown message type: {data.get('type')}")
                     
     except WebSocketDisconnect:
-        logger.info(f"WebSocket client disconnected: {session_id}")
+        print(f"Client disconnected: {session_id}")
     except Exception as e:
-        logger.error(f"WebSocket error: {str(e)}", exc_info=True)
+        print(f"WebSocket error: {str(e)}")
     finally:
-        logger.info(f"WebSocket connection closed for session: {session_id}")
         await websocket.close()
+        print("connection closed")
+
+async def cleanup_sessions():
+    """Remove expired sessions"""
+    current_time = datetime.now()
+    expired_sessions = [
+        session_id for session_id, session_data in sessions.items()
+        if (current_time - session_data["created_at"]).total_seconds() > config.SESSION_MAX_AGE
+    ]
+    
+    for session_id in expired_sessions:
+        del sessions[session_id]
+    
+    if expired_sessions:
+        print(f"Cleaned up {len(expired_sessions)} expired sessions")
 
 if __name__ == "__main__":
     # Ensure directories exist

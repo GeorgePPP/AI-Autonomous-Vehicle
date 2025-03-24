@@ -3,7 +3,7 @@
 # Model configuration
 MODEL = "gpt-4o-audio-preview"  # Use the audio-capable model
 USE_COT = False
-MODALITIES = ["text", "audio"]
+MODALITIES = ["text"]
 
 # Audio configuration
 AUDIO = {"voice": "alloy", "format": "wav"}
