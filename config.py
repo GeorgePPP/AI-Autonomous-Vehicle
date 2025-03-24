@@ -5,9 +5,6 @@ MODEL = "gpt-4o-audio-preview"  # Use the audio-capable model
 USE_COT = False
 MODALITIES = ["text", "audio"]
 
-# Audio-only mode setting
-AUDIO_ONLY_MODE = True  # Set to True to only allow audio input
-
 # Audio configuration
 AUDIO = {"voice": "alloy", "format": "wav"}
 SUPPORTED_AUDIO_FORMATS = ["wav"]  # Supported audio formats for client-side recording

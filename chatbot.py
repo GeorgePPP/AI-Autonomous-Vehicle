@@ -74,21 +74,8 @@ class NDII:
             ])
         return messages
     
-    def _build_chain_of_thought(self, user_input: str) -> str:
-        """Build chain of thought prompt for complex queries"""
-        cot = self.prompt_templates["chain_of_thought_template"]
-        return f"""
-            Think through this step by step:
-            {' '.join(cot['steps'])}
-
-            User Input: {user_input}
-
-            Generate a response following this thought process.
-        """
-    
     def _prepare_messages(
         self, 
-        user_input: str = "", 
         audio_data: Optional[Dict] = None,
         use_cot: bool = False
     ) -> List[Dict[str, Any]]:
@@ -96,7 +83,6 @@ class NDII:
         Prepare messages for the OpenAI API in the correct format.
         
         Args:
-            user_input: The user's text message (can be empty for audio-only)
             audio_data: The formatted audio data
             use_cot: Whether to use chain of thought reasoning
             
@@ -116,17 +102,10 @@ class NDII:
         if audio_data:
             content = []
             
-            # Add text component if provided
-            if user_input:
-                content.append({"type": "text", "text": user_input})
-            
             # Add audio component
             content.append(audio_data)
             
             user_message["content"] = content
-        else:
-            # For text-only messages, content can be a simple string
-            user_message["content"] = user_input
         
         # Add the user message to the messages list
         messages.append(user_message)
@@ -135,7 +114,6 @@ class NDII:
 
     async def send_message(
         self, 
-        user_input: str = "",
         audio_base64: Optional[str] = None,
         audio_format: str = "wav",
         use_cot: bool = False,
@@ -165,7 +143,6 @@ class NDII:
         
         # Prepare messages for the API
         messages = self._prepare_messages(
-            user_input=user_input,
             audio_data=audio_data,
             use_cot=use_cot
         )
@@ -179,21 +156,12 @@ class NDII:
             )
             
             if response.choices:
-                # Store the user's message in history
-                if audio_base64 and not user_input:
-                    # For audio-only input, add a placeholder
-                    user_content = "[Audio Input]"
-                else:
-                    user_content = user_input
-                
-                # Add to conversation history (for future context)
-                self.conversation_history.append({"role": "user", "content": user_content})
-                
+                # TODO: Transcribe user audio input here
                 # Store the assistant's response in history
                 assistant_message = response.choices[0].message
                 self.conversation_history.append({
                     "role": "assistant", 
-                    "content": assistant_message.content
+                    "content": assistant_message.audio.transcript
                 })
                 
                 return assistant_message

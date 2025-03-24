@@ -81,7 +81,6 @@ def home(request: Request):
         "session_id": session_id,
         "welcome_message": config.WELCOME_MESSAGE,
         "max_recording_duration": config.MAX_RECORDING_DURATION,
-        "audio_only_mode": config.AUDIO_ONLY_MODE
     })
 
 @app.get("/_chat_messages.html", response_class=HTMLResponse)
@@ -117,7 +116,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     "recording": {
                         "maxDuration": config.MAX_RECORDING_DURATION
                     },
-                    "audio_only_mode": config.AUDIO_ONLY_MODE
                 }
                 await websocket.send_json(client_config)
                 
@@ -135,7 +133,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     
                 try:
                     response = await nd_ii.send_message(
-                        user_input="",  # Empty for audio-only
                         audio_base64=audio_base64,
                         audio_format=audio_format,
                         model=config.MODEL,

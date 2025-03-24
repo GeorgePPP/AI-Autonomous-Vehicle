@@ -36,16 +36,6 @@
                 </div>
             </div>
             
-            {% if not audio_only_mode %}
-            <!-- Text input form (only shown if not in audio-only mode) -->
-            <form id="chatForm" class="chat-input" hx-post="/send_message" hx-target="#chatMessages" hx-swap="innerHTML">
-                <input type="hidden" name="session_id" value="{{ session_id }}">
-                <input type="hidden" name="use_audio" value="false" id="useAudio">
-                <input type="text" id="userInput" name="user_input" placeholder="Type your message here..." autocomplete="off">
-                <button type="submit">Send</button>
-            </form>
-            {% else %}
-            <!-- In audio-only mode, just show a message -->
             <div class="audio-only-message">
                 Press the record button to speak to the assistant
             </div>
@@ -56,7 +46,6 @@
                 <input type="hidden" name="use_audio" value="false" id="useAudio">
                 <input type="hidden" id="userInput" name="user_input" value="">
             </form>
-            {% endif %}
             
             <!-- Loading indicator -->
             <div id="typingIndicator" class="typing-indicator" style="display: none;">
