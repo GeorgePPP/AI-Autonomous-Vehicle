@@ -1,0 +1,68 @@
+{% if messages %}
+    {% for message in messages %}
+        <div class="message {% if message.sender == 'user' %}user-message{% else %}bot-message{% endif %}">
+            {{ message.content }}
+            
+            {% if message.sender == 'bot' and message.audio_base64 %}
+                <div id="debug-{{ loop.index }}" style="display:none; font-size:10px; color:#888;">Audio initialized</div>
+                <script>
+                    (function() {
+                        // Update debug element to show we're running
+                        const debugEl = document.getElementById('debug-{{ loop.index }}');
+                        debugEl.style.display = 'block';
+                        debugEl.textContent = 'Script running...';
+                        
+                        // Create audio element and play immediately
+                        try {
+                            const audio = new Audio();
+                            
+                            // Set event handlers for verification
+                            audio.onloadeddata = function() {
+                                debugEl.textContent = 'Audio loaded ✓ (' + Math.round(audio.duration) + 's)';
+                            };
+                            
+                            audio.onplay = function() {
+                                debugEl.textContent = 'Audio playing ✓';
+                            };
+                            
+                            audio.onerror = function() {
+                                debugEl.textContent = 'Audio error ✗ (' + (audio.error ? audio.error.code : 'unknown') + ')';
+                            };
+                            
+                            // Set source - verify the first few chars of base64 data
+                            const base64Start = '{{ message.audio_base64[:10] }}...';
+                            debugEl.textContent = 'Setting audio source (starts with: ' + base64Start + ')';
+                            audio.src = 'data:audio/wav;base64,{{ message.audio_base64 }}';
+                            
+                            // Add to DOM temporarily to ensure it works in all browsers
+                            audio.style.display = 'none';
+                            document.body.appendChild(audio);
+                            
+                            // Set volume and play
+                            audio.volume = 1.0;
+                            const playPromise = audio.play();
+                            
+                            // Handle playback promise
+                            if (playPromise !== undefined) {
+                                playPromise.then(() => {
+                                    debugEl.textContent = 'Playback started successfully ✓';
+                                }).catch((e) => {
+                                    debugEl.textContent = 'Playback failed: ' + e.message;
+                                    document.body.removeChild(audio);
+                                });
+                            } else {
+                                debugEl.textContent = 'Browser did not return play promise';
+                            }
+                        } catch (e) {
+                            debugEl.textContent = 'Exception: ' + e.message;
+                        }
+                    })();
+                </script>
+            {% endif %}
+        </div>
+    {% endfor %}
+{% else %}
+    <div class="message bot-message">
+        {{ welcome_message|default("Hello! I'm your autonomous vehicle assistant. How can I help you today?") }}
+    </div>
+{% endif %}

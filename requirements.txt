@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+json
+asyncio
+dotenv
+pydub
+openai

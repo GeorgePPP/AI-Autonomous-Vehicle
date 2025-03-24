@@ -4,33 +4,69 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ND II - Autonomous Vehicle Assistant</title>
-    <!-- Include the external CSS file -->
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/styles.css">
+    
+    <!-- Minimal required JavaScript -->
+    <script src="/static/script.js" defer></script>
 </head>
 <body>
     <div class="chat-container">
         <div class="chat-header">
             ND II - Autonomous Vehicle Assistant
         </div>
+        
         <div class="chat-messages" id="chatMessages">
-            <div class="message bot-message">
-                Hello! I'm your autonomous vehicle assistant. How can I help you today?
+            <!-- Chat messages will be loaded here -->
+            {% include "_chat_messages.html" %}
+        </div>
+        
+        <div class="chat-controls">
+            <!-- Audio recording controls -->
+            <div class="audio-controls">
+                <button type="button" id="recordButton" class="record-button">
+                    <span class="record-icon"></span>
+                    <span class="record-text">Record Audio</span>
+                </button>
+                <div id="recordingIndicator" class="recording-indicator">
+                    <div class="recording-wave">
+                        <span></span><span></span><span></span><span></span><span></span>
+                    </div>
+                    <span class="recording-time">0:00</span>
+                    <span class="recording-limit">(Max: {{ max_recording_duration }}s)</span>
+                </div>
             </div>
-            <div class="typing-indicator" id="typingIndicator">
-                <span></span>
-                <span></span>
-                <span></span>
+            
+            <div class="audio-only-message">
+                Press the record button to speak to the assistant
+            </div>
+            
+            <!-- Hidden form for HTMX functionality -->
+            <form id="chatForm" class="chat-input" style="display:none;" hx-post="/send_message" hx-target="#chatMessages" hx-swap="innerHTML">
+                <input type="hidden" name="session_id" value="{{ session_id }}">
+                <input type="hidden" name="use_audio" value="false" id="useAudio">
+                <input type="hidden" id="userInput" name="user_input" value="">
+            </form>
+            
+            <!-- Loading indicator -->
+            <div id="typingIndicator" class="typing-indicator" style="display: none;">
+                <span></span><span></span><span></span>
             </div>
         </div>
-        <form class="chat-input" id="chatForm">
-            <input type="text" id="userInput" placeholder="Type your message here..." autocomplete="off">
-            <button type="submit">Send</button>
-        </form>
     </div>
     
-    <!-- Include the external JavaScript file -->
-    <script src="/static/chat.js"></script>
-    <script src="/static/visualizer.js"></script>
-    <script src="/static/script.js"></script>
+    <!-- HTMX for AJAX-like functionality without heavy JS -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Custom event handling for the page -->
+    <script>
+        // Initialize WebSocket connection when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeWebSocket('{{ session_id }}');
+            
+            // Scroll chat to bottom on initial load
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        });
+    </script>
 </body>
 </html>

@@ -1,12 +1,16 @@
+import asyncio
 import json
-import openai
-from typing import List, Dict, Optional
+from openai import AsyncOpenAI
+import time
+from typing import List, Dict, Optional, Union, Any
 from pathlib import Path
+from utils import prepare_audio_message
 
 class NDII:
     def __init__(self, api_key: str):
+        self.client = AsyncOpenAI()
         self.api_key = api_key
-        openai.w = api_key
+        self.client.api_key = api_key  # Fixed API key assignment
         self.prompt_templates = self._load_prompts()
         self.conversation_history = []
         self.current_context = {}
@@ -21,11 +25,12 @@ class NDII:
             return json.load(f)
     
     def _build_system_message(self) -> Dict[str, str]:
-        """Build the system message using the COSTAR framework"""
+        """Build the system message using the COSTAR framework with embedded few-shot examples"""
         system_prompt = self.prompt_templates["system_prompt"]
         costar = self.prompt_templates["costar_framework"]
         
-        message = f"""
+        # Base system message content
+        text_content = f"""
             {system_prompt['context']}
 
             CONSTRAINTS:
@@ -45,9 +50,21 @@ class NDII:
             STYLE AND PERSONALITY:
             {json.dumps(system_prompt['style'], indent=2)}
         """
-        return {"role": "system", "content": message}
+        
+        # Embed few-shot examples into the system message if available
+        examples = self.prompt_templates.get("few_shot_examples", [])
+        if examples:
+            examples_text = "\n\nEXAMPLES:\n"
+            for i, example in enumerate(examples):
+                examples_text += f"Example {i+1}:\n"
+                examples_text += f"User: {example['user']}\n"
+                examples_text += f"Assistant: {example['assistant']}\n\n"
+            
+            text_content += examples_text
+        
+        return {"role": "system", "content": text_content}
     
-    def _add_few_shot_examples(self, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    def _add_few_shot_examples(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Add few-shot examples to the message history"""
         examples = self.prompt_templates["few_shot_examples"]
         for example in examples:
@@ -57,68 +74,95 @@ class NDII:
             ])
         return messages
     
-    def _build_chain_of_thought(self, user_input: str) -> str:
-        """Build chain of thought prompt for complex queries"""
-        cot = self.prompt_templates["chain_of_thought_template"]
-        return f"""
-            Think through this step by step:
-            {' '.join(cot['steps'])}
-
-            User Input: {user_input}
-
-            Generate a response following this thought process.
-        """
-    
-    def _prepare_messages(self, user_input: str, use_cot: bool = False) -> List[Dict[str, str]]:
-        """Prepare the complete message history with appropriate prompting"""
-        messages = [self._build_system_message()]
-        
-        # Add few-shot examples for new conversations
-        if not self.conversation_history:
-            messages = self._add_few_shot_examples(messages)
-        
-        # Add conversation history
-        messages.extend(self.conversation_history)
-        
-        # Add current user input with optional chain of thought
-        if use_cot:
-            messages.append({"role": "user", "content": self._build_chain_of_thought(user_input)})
-        else:
-            messages.append({"role": "user", "content": user_input})
-            
-        return messages
-
-    def send_message(
+    def _prepare_messages(
         self, 
-        user_input: str, 
-        use_cot: bool = False,
-        **kwargs
-    ) -> Optional[str]:
+        audio_data: Optional[Dict] = None,
+        use_cot: bool = False
+    ) -> List[Dict[str, Any]]:
         """
-        Send a message to ND II and get a response.
+        Prepare messages for the OpenAI API in the correct format.
         
         Args:
-            user_input: The user's message.
-            use_cot: Whether to use chain of thought reasoning.
-            **kwargs: Additional parameters for chat completion.
+            audio_data: The formatted audio data
+            use_cot: Whether to use chain of thought reasoning
             
         Returns:
-            The assistant's response or None if there's an error.
+            List of messages formatted for the OpenAI API
         """
-        messages = self._prepare_messages(user_input, use_cot)
+        # Start with system message (including embedded few-shot examples)
+        messages = [self._build_system_message()]
+        
+        # Add conversation history (excluding the current user input)
+        messages.extend(self.conversation_history)
+        
+        # Create the user message with proper content formatting
+        user_message = {"role": "user"}
+        
+        # Format content as an array when using audio or both text and audio
+        if audio_data:
+            content = []
+            
+            # Add audio component
+            content.append(audio_data)
+            
+            user_message["content"] = content
+        
+        # Add the user message to the messages list
+        messages.append(user_message)
+        
+        return messages
+
+    async def send_message(
+        self, 
+        audio_base64: Optional[str] = None,
+        audio_format: str = "wav",
+        use_cot: bool = False,
+        **kwargs
+    ) -> Any:
+        """
+        Send a message to ND II and get a response.
+        Supports both text and audio inputs formatted for OpenAI API.
+        """
+        # Prepare audio data if provided
+        audio_data = None
+        if audio_base64:
+            # Validate the audio data
+            if not audio_base64 or len(audio_base64) < 100:
+                print("Invalid audio data received")
+                return None
+                
+            try:
+                # Prepare the audio data for the API
+                audio_data = await prepare_audio_message(audio_base64, audio_format)
+                if not audio_data:
+                    print("Failed to prepare audio data")
+                    return None
+            except Exception as e:
+                print(f"Error preparing audio: {e}")
+                return None
+        
+        # Prepare messages for the API
+        messages = self._prepare_messages(
+            audio_data=audio_data,
+            use_cot=use_cot
+        )
         
         try:
-            response = openai.chat.completions.create(
+            print(f"Sending request with prepared messages.")
+            # Create the chat completion
+            response = await self.client.chat.completions.create(
                 messages=messages,
-                **kwargs  # Pass all additional parameters dynamically
+                **kwargs
             )
             
             if response.choices:
+                # TODO: Transcribe user audio input here
+                # Store the assistant's response in history
                 assistant_message = response.choices[0].message
-                
-                # Update conversation history
-                self.conversation_history.append({"role": "user", "content": user_input})
-                self.conversation_history.append({"role": "assistant", "content": assistant_message})
+                self.conversation_history.append({
+                    "role": "assistant", 
+                    "content": assistant_message.audio.transcript
+                })
                 
                 return assistant_message
             
