@@ -10,7 +10,7 @@ class NDII:
     def __init__(self, api_key: str):
         self.client = AsyncOpenAI()
         self.api_key = api_key
-        self.client.api_key = api_key  # Fixed API key assignment
+        self.client.api_key = api_key
         self.prompt_templates = self._load_prompts()
         self.conversation_history = []
         self.current_context = {}
@@ -109,7 +109,7 @@ class NDII:
         
         # Add the user message to the messages list
         messages.append(user_message)
-        
+    
         return messages
 
     async def send_message(
@@ -129,17 +129,17 @@ class NDII:
             # Validate the audio data
             if not audio_base64 or len(audio_base64) < 100:
                 print("Invalid audio data received")
-                return None
+                return "I couldn't hear your message clearly. Could you try again?"
                 
             try:
                 # Prepare the audio data for the API
                 audio_data = await prepare_audio_message(audio_base64, audio_format)
                 if not audio_data:
                     print("Failed to prepare audio data")
-                    return None
+                    return "There was an issue processing your audio. Please try again."
             except Exception as e:
                 print(f"Error preparing audio: {e}")
-                return None
+                return f"There was an error processing your audio: {str(e)}"
         
         # Prepare messages for the API
         messages = self._prepare_messages(
@@ -159,16 +159,19 @@ class NDII:
                 # TODO: Transcribe user audio input here
                 # Store the assistant's response in history
                 assistant_message = response.choices[0].message
+                
+                
+                # Add to conversation history
                 self.conversation_history.append({
                     "role": "assistant", 
                     "content": assistant_message.audio.transcript
                 })
-                
+
                 return assistant_message
             
         except Exception as e:
             print(f"Error making request: {e}")
-            return None
+            return f"I encountered an error while processing your request: {str(e)}"
             
     def reset_conversation(self):
         """Reset the conversation history"""

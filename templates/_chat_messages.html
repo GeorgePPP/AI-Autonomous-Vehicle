@@ -4,60 +4,29 @@
             {{ message.content }}
             
             {% if message.sender == 'bot' and message.audio_base64 %}
-                <div id="debug-{{ loop.index }}" style="display:none; font-size:10px; color:#888;">Audio initialized</div>
+                <!-- Only add playback for the most recent bot message with audio -->
+                {% if loop.last %}
                 <script>
+                    // Create and play audio element
                     (function() {
-                        // Update debug element to show we're running
-                        const debugEl = document.getElementById('debug-{{ loop.index }}');
-                        debugEl.style.display = 'block';
-                        debugEl.textContent = 'Script running...';
+                        const audio = new Audio();
+                        audio.src = 'data:audio/wav;base64,{{ message.audio_base64 }}';
                         
-                        // Create audio element and play immediately
-                        try {
-                            const audio = new Audio();
-                            
-                            // Set event handlers for verification
-                            audio.onloadeddata = function() {
-                                debugEl.textContent = 'Audio loaded ✓ (' + Math.round(audio.duration) + 's)';
-                            };
-                            
-                            audio.onplay = function() {
-                                debugEl.textContent = 'Audio playing ✓';
-                            };
-                            
-                            audio.onerror = function() {
-                                debugEl.textContent = 'Audio error ✗ (' + (audio.error ? audio.error.code : 'unknown') + ')';
-                            };
-                            
-                            // Set source - verify the first few chars of base64 data
-                            const base64Start = '{{ message.audio_base64[:10] }}...';
-                            debugEl.textContent = 'Setting audio source (starts with: ' + base64Start + ')';
-                            audio.src = 'data:audio/wav;base64,{{ message.audio_base64 }}';
-                            
-                            // Add to DOM temporarily to ensure it works in all browsers
-                            audio.style.display = 'none';
-                            document.body.appendChild(audio);
-                            
-                            // Set volume and play
-                            audio.volume = 1.0;
-                            const playPromise = audio.play();
-                            
-                            // Handle playback promise
-                            if (playPromise !== undefined) {
-                                playPromise.then(() => {
-                                    debugEl.textContent = 'Playback started successfully ✓';
-                                }).catch((e) => {
-                                    debugEl.textContent = 'Playback failed: ' + e.message;
-                                    document.body.removeChild(audio);
-                                });
-                            } else {
-                                debugEl.textContent = 'Browser did not return play promise';
-                            }
-                        } catch (e) {
-                            debugEl.textContent = 'Exception: ' + e.message;
-                        }
+                        // Set volume and play
+                        audio.volume = 1.0;
+                        console.log("Attempting to play latest audio response");
+                        
+                        // Play the audio
+                        audio.play()
+                            .then(() => {
+                                console.log("Audio playback started successfully");
+                            })
+                            .catch(error => {
+                                console.error("Auto-play failed:", error);
+                            });
                     })();
                 </script>
+                {% endif %}
             {% endif %}
         </div>
     {% endfor %}

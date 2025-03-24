@@ -71,7 +71,6 @@ function handleWebSocketMessage(event) {
                 }
 
                 updateUIForAudioInput();
-
                 break;
 
             default:
@@ -100,12 +99,18 @@ function updateChatMessages() {
         swap: 'innerHTML',
         values: { session_id: sessionId },
         indicator: '#typingIndicator',
-        error: function(xhr) {
-            console.error("Error loading chat messages:", xhr.status, xhr.statusText);
-            showMessage("Error loading chat messages. Please refresh the page.", 'system-message');
+        complete: function() {
+            // Hide typing indicator once complete
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) typingIndicator.style.display = 'none';
+            
+            // Scroll to bottom after update
+            const chatMessages = document.getElementById('chatMessages');
+            if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
         }
     });
 }
+
 function updateUIForAudioInput() {
     const chatInput = document.querySelector('.chat-input');
     if (chatInput) chatInput.style.display = 'none';
@@ -113,6 +118,7 @@ function updateUIForAudioInput() {
     const recordButton = document.getElementById('recordButton');
     if (recordButton) recordButton.classList.add('audio-only-button');
 }
+
 // Toggle audio recording
 function toggleRecording(recordButton, recordingIndicator) {
     if (!recordButton || !recordingIndicator) {
@@ -349,6 +355,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const recordButton = document.getElementById('recordButton');
     const recordingIndicator = document.getElementById('recordingIndicator');
     const typingIndicator = document.getElementById('typingIndicator');
+    const chatMessages = document.getElementById('chatMessages');
     
     // Form handling
     if (chatForm && userInput) {
@@ -361,30 +368,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             if (typingIndicator) typingIndicator.style.display = 'block';
-        });
-        
-        chatForm.addEventListener('htmx:afterSwap', function() {
-            // Clear input and hide typing indicator
-            userInput.value = '';
-            
-            if (typingIndicator) typingIndicator.style.display = 'none';
-            
-            // Scroll to bottom
-            const chatMessages = document.getElementById('chatMessages');
-            if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
-            
-            // Auto-play audio elements
-            document.querySelectorAll('audio[data-autoplay="true"]:not([data-played="true"])').forEach(audio => {
-                audio.play()
-                    .then(() => {
-                        console.log("Audio playback started");
-                        audio.setAttribute('data-played', 'true');
-                    })
-                    .catch(error => {
-                        console.error("Auto-play failed:", error);
-                        showMessage("Audio playback failed. Click the audio player to listen.", 'system-message', 5000);
-                    });
-            });
         });
     }
     
@@ -417,6 +400,11 @@ document.addEventListener('DOMContentLoaded', function() {
         initializeWebSocket(sessionIdInput.value);
     } else {
         console.error("No session ID input found, WebSocket cannot be initialized");
+    }
+    
+    // Scroll chat to bottom on load
+    if (chatMessages) {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 });
 

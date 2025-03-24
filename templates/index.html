@@ -6,7 +6,10 @@
     <title>ND II - Autonomous Vehicle Assistant</title>
     <link rel="stylesheet" href="/static/styles.css">
     
-    <!-- Minimal required JavaScript -->
+    <!-- HTMX for AJAX-like functionality without heavy JS -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Load our script with defer to ensure it runs after the DOM is ready -->
     <script src="/static/script.js" defer></script>
 </head>
 <body>
@@ -54,18 +57,11 @@
         </div>
     </div>
     
-    <!-- HTMX for AJAX-like functionality without heavy JS -->
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    
-    <!-- Custom event handling for the page -->
+    <!-- Initialize session when page loads -->
     <script>
-        // Initialize WebSocket connection when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            initializeWebSocket('{{ session_id }}');
-            
-            // Scroll chat to bottom on initial load
-            const chatMessages = document.getElementById('chatMessages');
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            // Notify console that page is initializing
+            console.log("ND II Voice Assistant initializing with session: {{ session_id }}");
         });
     </script>
 </body>
