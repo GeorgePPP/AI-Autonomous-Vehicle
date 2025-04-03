@@ -108,7 +108,6 @@ class NDII:
     async def _prepare_messages_rag(
         self,
         audio_data: Optional[Dict] = None,
-        use_cot: bool = False
     ) -> List[Dict[str, Any]]:
         
         audio_base64 = audio_data["input_audio"]["data"]
@@ -152,7 +151,7 @@ class NDII:
 
         return messages
 
-    async def generate_speech(self, text: str, voice: str = "alloy", format: str = "wav") -> Optional[str]:
+    async def generate_speech(self, text: str = "", model:str = "gpt-4o-mini-tts", voice: str = "alloy", format: str = "wav", instructions: str = "") -> Optional[str]:
         """
         Generate text-to-speech audio using OpenAI's TTS API
         
@@ -168,33 +167,32 @@ class NDII:
             print(f"Generating TTS for: '{text[:50]}...' using voice: {voice}")
             
             # Call OpenAI's TTS API
-            response = await self.client.audio.speech.create(
-                model="tts-1",  # Using a stable TTS model
+            async with self.client.audio.speech.with_streaming_response.create(
+                model=model,
                 voice=voice,
+                response_format=format,
                 input=text,
-                response_format=format
-            )
-            
-            # Get binary audio data - response is already bytes, no need to await
-            # The error was here - response.read() is not awaitable
-            audio_data = response.content
-            
-            # Convert to base64 for transmission
-            base64_audio = base64.b64encode(audio_data).decode('utf-8')
-            
-            print(f"TTS generated successfully: {len(base64_audio)/1024:.2f} KB")
-            return base64_audio
-            
+                instructions=instructions
+            ) as response:
+                            
+                audio_data = await response.read()
+                
+                # Convert to base64 for transmission
+                base64_audio = base64.b64encode(audio_data).decode('utf-8')
+                
+                print(f"TTS generated successfully: {len(base64_audio)/1024:.2f} KB")
+                return base64_audio
+                
         except Exception as e:
             print(f"Error generating speech: {e}")
             return None
 
     async def send_message(
         self, 
-        audio_base64: Optional[str] = None,
-        audio_format: str = "wav",
-        use_cot: bool = False,
-        **kwargs
+        audio_base64,
+        audio_input_format,
+        text_config,
+        audio_config
     ) -> Tuple[str, Optional[str]]:
         """
         Send a message to ND II and get a response.
@@ -214,7 +212,7 @@ class NDII:
                 
             try:
                 # Prepare the audio data for the API
-                audio_data = await prepare_audio_message(audio_base64, audio_format)
+                audio_data = await prepare_audio_message(audio_base64, audio_input_format)
                 if not audio_data:
                     print("Failed to prepare audio data")
                     return "There was an issue processing your audio. Please try again.", None
@@ -234,7 +232,7 @@ class NDII:
             # Create the chat completion
             response = await self.client.chat.completions.create(
                 messages=messages,
-                **kwargs
+                **text_config
             )
             
             if response.choices:
@@ -256,15 +254,9 @@ class NDII:
                     "content": text_output
                 })
                 
-                # Generate audio from the text response
-                audio_config = kwargs.get('audio', {})
-                voice = audio_config.get('voice', 'alloy')
-                audio_format = audio_config.get('format', 'wav')
-                
                 audio_base64 = await self.generate_speech(
-                    text=text_output,
-                    voice=voice,
-                    format=audio_format
+                    text = text_output,
+                    **audio_config
                 )
                 
                 return text_output, audio_base64

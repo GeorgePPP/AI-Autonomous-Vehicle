@@ -144,7 +144,7 @@ def convert_audio_format(
                     logger.warning(f"Failed to remove temporary file {path}: {str(e)}")
 
 
-async def prepare_audio_message(base64_audio: str, audio_format: str = 'webm') -> Optional[dict]:
+async def prepare_audio_message(base64_audio: str, audio_format: str = 'wav') -> Optional[dict]:
     """
     Prepare audio data to be sent to OpenAI API asynchronously.
     

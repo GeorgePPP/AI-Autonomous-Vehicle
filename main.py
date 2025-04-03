@@ -131,7 +131,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             elif data.get("type") == "audio_recorded":
                 # Get and validate audio data
                 audio_base64 = data.get("audio_data")
-                audio_format = data.get("format", "wav")
+                audio_input_format = data.get("format", "wav")
                 
                 if not audio_base64 or not test_base_64_string(audio_base64):
                     await websocket.send_json({
@@ -143,12 +143,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 try:
                     # Send to ND II for processing - now returns tuple of (text, audio_base64)
                     response = await nd_ii.send_message(
-                        audio_base64=audio_base64,
-                        audio_format=audio_format,
-                        model=config.MODEL,
-                        use_cot=config.USE_COT,
-                        modalities=config.MODALITIES,
-                        audio=config.AUDIO
+                        audio_base64,
+                        audio_input_format,
+                        config.TEXT,
+                        config.AUDIO
                     )                    
                     
                     # Process the response - unpack the tuple
