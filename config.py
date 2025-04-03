@@ -1,13 +1,18 @@
 # config.py
 
 # Model configuration
-MODEL = "gpt-4o-audio-preview"  # Use the audio-capable model
-USE_COT = False
-MODALITIES = ["text"]
+TEXT = {
+    "model": "gpt-4o-audio-preview",
+    "modalities": ['text'],
+}
 
 # Audio configuration
-AUDIO = {"voice": "alloy", "format": "wav"}
-SUPPORTED_AUDIO_FORMATS = ["wav"]  # Supported audio formats for client-side recording
+AUDIO = {
+    "model": "gpt-4o-mini-tts",
+    "voice": "alloy", 
+    "format": "wav", 
+    "instructions": "Please speak in a super cheerful and welcoming with moderate tone that shows consideration."
+}
 
 # Server configuration
 HOST = "0.0.0.0"
