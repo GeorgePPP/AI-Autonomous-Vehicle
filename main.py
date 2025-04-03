@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
+from contextlib import asynccontextmanager
 
 import uvicorn
 import base64
@@ -20,17 +21,23 @@ import config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
-app = FastAPI()
-templates = Jinja2Templates(directory=config.TEMPLATE_DIR)
-app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
-
 # Initialize ND II with API key
 api_key = get_api_key()
-nd_ii = NDII(api_key, max_history=2)  # Keep only last 2 exchanges
 
 # Store active sessions
 sessions = {}
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global nd_ii
+    api_key = get_api_key()
+    nd_ii = await NDII.create_db(api_key, max_history=2)  # Keep only last 2 exchanges
+    yield
+
+# Initialize FastAPI app
+app = FastAPI(lifespan=lifespan)
+templates = Jinja2Templates(directory=config.TEMPLATE_DIR)
+app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 
 def process_nd_ii_response(response):
     """Process NDII response and extract text and audio data"""

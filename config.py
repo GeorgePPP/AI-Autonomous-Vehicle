@@ -27,3 +27,7 @@ WELCOME_MESSAGE = "Hello! I'm your autonomous vehicle assistant. Press the micro
 # Template and static directories
 TEMPLATE_DIR = "templates"
 STATIC_DIR = "static"
+
+# Vector database configuration
+PERSIST_DIRECTORY = "chroma_storage/"
+COLLECTION_NAME = "ndii_collection"

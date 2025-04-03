@@ -7,18 +7,56 @@ import time
 from typing import List, Dict, Optional, Union, Any, Tuple
 from pathlib import Path
 from utils import prepare_audio_message
+import numpy as np
+
+import config
+from chroma_db import DB
 
 class NDII:
-    def __init__(self, api_key: str, max_history: int = 2):
-        self.client = AsyncOpenAI()
+    def __init__(self, client, prompt_templates, db, api_key, max_history=2):
+        self.client = client
         self.api_key = api_key
         self.client.api_key = api_key
-        self.prompt_templates = self._load_prompts()
+        self.prompt_templates = prompt_templates
         self.conversation_history = []
         self.current_context = {}
         self.max_history = max_history
+        self.db = db
+        self.collection = self.db.collection
+
+    @classmethod
+    async def create_db(cls, api_key: str, max_history: int = 2):
+        client = AsyncOpenAI()
+        client.api_key = api_key
+
+        db = DB(persist_directory=config.PERSIST_DIRECTORY, collection_name=config.COLLECTION_NAME)
+        await db.process_all_files("source")
+
+        prompt_templates = cls._load_prompts()
+
+        return cls(client, prompt_templates, db, api_key, max_history)
+
+    async def retrieve_context(self, user_query: str, k: int = 3) -> list[str]:
+        """Retrieve relevant chunks from ChromaDB using OpenAI embedding."""
+        try:
+            response = await self.client.embeddings.create(
+                model="text-embedding-3-small",
+                input=user_query
+            )
+            embedding = response.data[0].embedding
+        except Exception as e:
+            print(f"Embedding failed: {e}")
+            return []
         
-    def _load_prompts(self) -> Dict:
+        results = self.collection.query(
+            query_embeddings=[embedding],
+            n_results=k
+        )
+
+        return results["documents"][0] if results["documents"] else []
+
+    @staticmethod
+    def _load_prompts() -> Dict:
         """Load prompt templates from the prompts directory"""
         prompt_path = Path("prompts/ndii_prompts.json")
         if not prompt_path.exists():
@@ -67,42 +105,51 @@ class NDII:
         
         return {"role": "system", "content": text_content}
     
-    def _prepare_messages(
-        self, 
+    async def _prepare_messages_rag(
+        self,
         audio_data: Optional[Dict] = None,
         use_cot: bool = False
     ) -> List[Dict[str, Any]]:
-        """
-        Prepare messages for the OpenAI API in the correct format.
         
-        Args:
-            audio_data: The formatted audio data
-            use_cot: Whether to use chain of thought reasoning
-            
-        Returns:
-            List of messages formatted for the OpenAI API
-        """
-        # Start with system message (including embedded few-shot examples)
+        audio_base64 = audio_data["input_audio"]["data"]
+        audio_bytes = base64.b64decode(audio_base64)
+
+        # Wrap in a BytesIO object to simulate a file
+        audio_file = io.BytesIO(audio_bytes)
+        audio_file.name = "input.wav"  # Required by OpenAI
+
+        translation = await self.client.audio.transcriptions.create(
+                model="whisper-1",  # Using a transcribe model
+                file=audio_file
+            )
+
+        user_query = translation.text
+
+        context_chunks = await self.retrieve_context(user_query)
+        context_text = "\n\n".join(context_chunks)
+
         messages = [self._build_system_message()]
         
         # Add conversation history (only the latest ones, based on max_history)
         messages.extend(self.conversation_history)
+
+        messages.append({
+            "role": "user",
+            "content": context_text
+            })
         
-        # Create the user message with proper content formatting
         user_message = {"role": "user"}
-        
-        # Format content as an array when using audio or both text and audio
+
         if audio_data:
             content = []
-            
+
             # Add audio component
             content.append(audio_data)
-            
+
             user_message["content"] = content
         
-        # Add the user message to the messages list
         messages.append(user_message)
-    
+
         return messages
 
     async def generate_speech(self, text: str, voice: str = "alloy", format: str = "wav") -> Optional[str]:
@@ -156,6 +203,7 @@ class NDII:
         Returns:
             Tuple of (text_response, audio_base64)
         """
+
         # Prepare audio data if provided
         audio_data = None
         if audio_base64:
@@ -175,7 +223,7 @@ class NDII:
                 return f"There was an error processing your audio: {str(e)}", None
         
         # Prepare messages for the API
-        messages = self._prepare_messages(
+        messages = await self._prepare_messages_rag(
             audio_data=audio_data,
             use_cot=use_cot
         )
