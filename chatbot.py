@@ -222,8 +222,7 @@ class NDII:
         
         # Prepare messages for the API
         messages = await self._prepare_messages_rag(
-            audio_data=audio_data,
-            use_cot=use_cot
+            audio_data=audio_data
         )
         
         try:
