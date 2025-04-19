@@ -71,6 +71,45 @@ def add_messages_to_session(session_id, user_content, bot_content, bot_audio=Non
     })
     return True
 
+async def save_chat_to_file(session_id: str):
+    """Save chat messages to a JSON file in the chatlog directory"""
+    if session_id not in sessions:
+        logger.warning(f"Session {session_id} not found when saving chat log")
+        return False
+        
+    # Create chatlog directory if it doesn't exist
+    os.makedirs("chatlog", exist_ok=True)
+    
+    # Use a single file per session that gets updated
+    filename = f"chatlog/session_{session_id}.json"
+    
+    # Create a clean copy of messages without audio data
+    messages = []
+    for msg in sessions[session_id]["messages"]:
+        msg_copy = msg.copy()
+        if "audio_base64" in msg_copy:
+            del msg_copy["audio_base64"]
+        messages.append(msg_copy)
+
+    # Prepare the data to save
+    chat_data = {
+        "session_id": session_id,
+        "created_at": sessions[session_id]["created_at"].isoformat(),
+        "updated_at": datetime.now().isoformat(),
+        "message_count": len(messages),
+        "messages": messages
+    }
+    
+    # Write to file
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(chat_data, f, indent=2, default=str)
+        logger.info(f"Chat log updated in {filename}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving chat log: {e}")
+        return False
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     # Generate a unique session ID
@@ -155,6 +194,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     
                     # Add messages to session
                     add_messages_to_session(session_id, "[Audio Input]", text_output, response_audio)
+                    # Save chat log after processing message
+                    await save_chat_to_file(session_id)
                     print(f"Added to session - Audio data present: {bool(response_audio)}")
                     
                     # Send success response
@@ -183,6 +224,8 @@ async def cleanup_sessions():
     ]
     
     for session_id in expired_sessions:
+        # Save chat log before removing the session
+        await save_chat_to_file(session_id)
         del sessions[session_id]
     
     if expired_sessions:
