@@ -66,40 +66,46 @@ class NDII:
             return json.load(f)
     
     def _build_system_message(self) -> Dict[str, str]:
-        """Build the system message using the COSTAR framework with embedded few-shot examples"""
+        """Build the system message using the Speech Act framework with embedded few-shot examples"""
         system_prompt = self.prompt_templates["system_prompt"]
-        costar = self.prompt_templates["costar_framework"]
+
+        # Base system message sections loaded from config
+        sections = [
+            system_prompt['context'],
+            
+            "SPEECH-ACT FRAMEWORK:",
+            system_prompt['speech_act_framework']['description'],
+            "- " + "\n- ".join(system_prompt['speech_act_framework']['components']),
+            
+            "INTERACTION PRINCIPLES:",
+            "- " + "\n- ".join(system_prompt['principles']),
+            
+            "CONVERSATION MODES:",
+            "- " + "\n- ".join([f"{k}: {v}" for k, v in system_prompt['modes'].items()]),
+            
+            "CONSTRAINTS:",
+            "- " + "\n- ".join(system_prompt['constraints']),
+            
+            "PERSONA:",
+            system_prompt['persona'],
+            
+            "RESPONSE FORMAT:",
+            system_prompt['response_format'],
+        ]
         
-        # Base system message content
-        text_content = f"""
-            {system_prompt['context']}
-
-            CONSTRAINTS:
-            {' '.join(system_prompt['constraints'])}
-
-            OBJECTIVES:
-            {' '.join(system_prompt['objectives'])}
-
-            OPERATING FRAMEWORK:
-            Context: {costar['context']}
-            Objectives: {costar['objectives']}
-            Steps: {costar['steps']}
-            Tools: {costar['tools']}
-            Actions: {costar['actions']}
-            Review: {costar['review']}
-
-            STYLE AND PERSONALITY:
-            {json.dumps(system_prompt['style'], indent=2)}
-        """
+        # Content assembled with proper spacing
+        text_content = "\n\n".join(sections)
         
-        # Embed few-shot examples into the system message if available
-        examples = self.prompt_templates.get("few_shot_examples", [])
+        # Embed few-shot examples into the system message
+        examples = system_prompt.get("few_shot_examples", [])
         if examples:
-            examples_text = "\n\nEXAMPLES:\n"
+            examples_text = "\n\nSPEECH-ACT EXAMPLES:\n"
             for i, example in enumerate(examples):
-                examples_text += f"Example {i+1}:\n"
-                examples_text += f"User: {example['user']}\n"
-                examples_text += f"Assistant: {example['assistant']}\n\n"
+                examples_text += f"Example {i+1} - {example['context']}:\n"
+                examples_text += f"Passenger: {example['user']}\n"
+                examples_text += f"ND II (Locution): {example['assistant_locution']}\n"
+                examples_text += f"[Internal Illocution: {example['assistant_illocution']}]\n"
+                examples_text += f"[Internal Perlocution: {example['assistant_perlocution']}]\n\n"
             
             text_content += examples_text
         
