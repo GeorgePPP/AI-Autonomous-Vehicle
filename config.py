@@ -2,8 +2,7 @@
 
 # Model configuration
 TEXT = {
-    "model": "gpt-4o-audio-preview",
-    "modalities": ['text'],
+    "model": "gpt-4o",
 }
 
 # Audio configuration
