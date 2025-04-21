@@ -28,10 +28,10 @@ PGVECTOR = {
 # RAG configuration
 RAG = {
     "embedding_model": "text-embedding-3-large",
-    "chunk_size": 1000,
-    "chunk_overlap": 400,
-    "retrieval_k": 3,
-    "similarity_threshold": 0.7,  # Minimum similarity score (0-1)
+    "chunk_size": 512,
+    "chunk_overlap": 200,
+    "retrieval_k": 5,
+    "similarity_threshold": 0.2,  # Minimum similarity score (0-1)
     "use_metadata_filtering": True,  # Enable filtering by metadata
     "reranking_enabled": False,  # Whether to use a separate reranker model
     "source_folder": "source",
