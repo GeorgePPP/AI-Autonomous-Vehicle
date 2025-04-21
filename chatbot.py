@@ -323,7 +323,7 @@ class NDII:
         audio_input_format,
         text_config,
         audio_config
-    ) -> Tuple[str, Optional[str]]:
+    ) -> Tuple[str, Optional[str], Dict[str, Any]]:
         """Send a message to ND II and get a response with optional audio.
         
         Args:
@@ -333,35 +333,48 @@ class NDII:
             audio_config: Configuration for the TTS
             
         Returns:
-            Tuple of (text_response, audio_base64)
+            Tuple of (text_response, audio_base64, message_metadata)
         """
+        # Initialize metadata dict to track important information
+        message_metadata = {
+            "transcribed_query": None,
+            "retrieved_chunks": [],
+            "chunk_metadata": []
+        }
+        
         # Process audio input if provided
         user_query = ""
         if audio_base64:
             # Validate the audio data
             if not audio_base64 or len(audio_base64) < 100:
                 logger.warning("Invalid audio data received")
-                return "I couldn't hear your message clearly. Could you try again?", None
+                return "I couldn't hear your message clearly. Could you try again?", None, message_metadata
                 
             try:
                 # Prepare the audio data for the API
                 audio_data = await prepare_audio_message(audio_base64, audio_input_format)
                 if not audio_data:
                     logger.error("Failed to prepare audio data")
-                    return "There was an issue processing your audio. Please try again.", None
+                    return "There was an issue processing your audio. Please try again.", None, message_metadata
                 
                 # Transcribe the audio to text
                 user_query = await self._transcribe_audio(audio_data)
+                message_metadata["transcribed_query"] = user_query  # Store for logging
                 logger.info(f"User query transcribed: '{user_query[:50]}...'")
             except Exception as e:
                 logger.error(f"Error processing audio: {e}")
-                return f"There was an error processing your audio: {str(e)}", None
+                return f"There was an error processing your audio: {str(e)}", None, message_metadata
         else:
             logger.warning("No audio input provided")
-            return "I need an audio input to process your request.", None
+            return "I need an audio input to process your request.", None, message_metadata
         
         # Prepare messages for the LLM API with transcribed text
-        messages, context_text = await self._prepare_messages_for_llm(user_query)
+        messages, _ = await self._prepare_messages_for_llm(user_query)
+        
+        # Store retrieved chunks for logging
+        if self.current_context:
+            message_metadata["retrieved_chunks"] = self.current_context.get("chunks", [])
+            message_metadata["chunk_metadata"] = self.current_context.get("metadata", [])
         
         # Get response from LLM
         try:
@@ -405,15 +418,15 @@ class NDII:
                     **audio_config
                 )
                 
-                return text_output, audio_base64
+                return text_output, audio_base64, message_metadata
             else:
                 logger.warning("No choices in LLM response")
-                return "I didn't receive a response. Please try again.", None
+                return "I didn't receive a response. Please try again.", None, message_metadata
             
         except Exception as e:
             logger.error(f"Error in LLM request: {e}")
-            return f"I encountered an error while processing your request: {str(e)}", None
-            
+            return f"I encountered an error while processing your request: {str(e)}", None, message_metadata
+                
     def reset_conversation(self):
         """Reset the conversation history"""
         logger.info("Resetting conversation history")

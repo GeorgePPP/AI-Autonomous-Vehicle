@@ -46,35 +46,68 @@ templates = Jinja2Templates(directory=config.TEMPLATE_DIR)
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 
 def process_nd_ii_response(response):
-    """Process NDII response and extract text and audio data"""
-    # For the updated implementation, response is now a tuple of (text_output, audio_base64)
-    text_output, audio_base64 = response
+    """Process NDII response and extract text, audio data, and metadata"""
+    # For the updated implementation, response is now a tuple of (text_output, audio_base64, message_metadata)
+    text_output, audio_base64, message_metadata = response
     
     # Default fallback message if text is empty
     if not text_output:
         text_output = "I received your message."
         
-    return text_output, audio_base64
+    return text_output, audio_base64, message_metadata
 
-def add_messages_to_session(session_id, user_content, bot_content, bot_audio=None):
+def add_messages_to_session(session_id, user_content, bot_content, bot_audio=None, message_metadata=None):
     """Add user and bot messages to a session"""
     if session_id not in sessions:
         logger.warning(f"Session {session_id} not found when adding messages")
         return False
-    # Add user message
-    sessions[session_id]["messages"].append({
+    
+    # Add user message (user_content now contains the transcribed query)
+    user_message = {
         "sender": "user",
         "content": user_content,
         "timestamp": datetime.now()
-    })
+    }
+    
+    sessions[session_id]["messages"].append(user_message)
     
     # Add bot message
-    sessions[session_id]["messages"].append({
+    bot_message = {
         "sender": "bot",
         "content": bot_content,
         "audio_base64": bot_audio,
         "timestamp": datetime.now()
-    })
+    }
+    
+    sessions[session_id]["messages"].append(bot_message)
+    
+    # Store RAG information with the session if available
+    if message_metadata and message_metadata.get("retrieved_chunks"):
+        # Store just the first 2-3 chunks to avoid excessive data
+        max_chunks = 3
+        shortened_chunks = []
+        for i, chunk in enumerate(message_metadata["retrieved_chunks"][:max_chunks]):
+            # Truncate long chunks to avoid massive log files
+            max_length = 500
+            shortened_chunk = chunk[:max_length] + "..." if len(chunk) > max_length else chunk
+            
+            # Add metadata if available
+            chunk_info = {"content": shortened_chunk}
+            if message_metadata.get("chunk_metadata") and i < len(message_metadata["chunk_metadata"]):
+                chunk_info["metadata"] = message_metadata["chunk_metadata"][i]
+                
+            shortened_chunks.append(chunk_info)
+            
+        # Add the RAG data to the session
+        if "rag_data" not in sessions[session_id]:
+            sessions[session_id]["rag_data"] = []
+            
+        sessions[session_id]["rag_data"].append({
+            "for_message_index": len(sessions[session_id]["messages"]) - 2,  # Index of the user message
+            "chunks": shortened_chunks,
+            "timestamp": datetime.now()
+        })
+    
     return True
 
 async def save_chat_to_file(session_id: str):
@@ -105,6 +138,10 @@ async def save_chat_to_file(session_id: str):
         "message_count": len(messages),
         "messages": messages
     }
+    
+    # Add RAG data if available
+    if "rag_data" in sessions[session_id]:
+        chat_data["rag_data"] = sessions[session_id]["rag_data"]
     
     # Write to file
     try:
@@ -186,7 +223,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     continue
                     
                 try:
-                    # Send to ND II for processing - now returns tuple of (text, audio_base64)
+                    # Send to ND II for processing - now returns tuple of (text, audio_base64, message_metadata)
                     response = await nd_ii.send_message(
                         audio_base64,
                         audio_input_format,
@@ -195,11 +232,21 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     )                    
                     
                     # Process the response - unpack the tuple
-                    text_output, response_audio = process_nd_ii_response(response)
+                    text_output, response_audio, message_metadata = process_nd_ii_response(response)
                     logger.info(f"Response received - Audio output: {'Yes' if response_audio else 'No'}")
                     
-                    # Add messages to session
-                    add_messages_to_session(session_id, "[Audio Input]", text_output, response_audio)
+                    # Use the actual transcription as the user message content if available
+                    user_content = message_metadata.get("transcribed_query", "[Audio Input]")
+                    
+                    # Add messages to session with metadata
+                    add_messages_to_session(
+                        session_id, 
+                        user_content,  # Use transcribed text instead of "[Audio Input]"
+                        text_output, 
+                        response_audio,
+                        message_metadata
+                    )
+                    
                     # Save chat log after processing message
                     await save_chat_to_file(session_id)
                     print(f"Added to session - Audio data present: {bool(response_audio)}")
