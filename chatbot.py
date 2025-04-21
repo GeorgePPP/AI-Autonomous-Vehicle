@@ -31,6 +31,7 @@ class NDII:
 
         db = DB(persist_directory=config.PERSIST_DIRECTORY, collection_name=config.COLLECTION_NAME)
         await db.process_all_files("source")
+        print(f"[COLLECTION] {db.collection.count()}")
 
         prompt_templates = cls._load_prompts()
 
@@ -44,14 +45,22 @@ class NDII:
                 input=user_query
             )
             embedding = response.data[0].embedding
+            print(f"[EMBEDDING VECTOR] {embedding[:5]}... ({len(embedding)} dimensions)")
+
         except Exception as e:
             print(f"Embedding failed: {e}")
             return []
         
         results = self.collection.query(
             query_embeddings=[embedding],
-            n_results=k
+            n_results=k,
+            include=["distances", "documents", "metadatas"]
         )
+        print(f'[RESULTS] {results}')
+        print(f"[QUERY] {user_query}")
+        print(f"[RETRIEVED DOCUMENTS] {results["documents"]}")
+        print(f"[DISTANCES] {results["distances"]}")
+        print(f"[METADATA] {results["metadatas"]}")
 
         return results["documents"][0] if results["documents"] else []
 
@@ -131,6 +140,7 @@ class NDII:
         user_query = translation.text
 
         context_chunks = await self.retrieve_context(user_query)
+        print(f"Chunks:\n{context_chunks}")
         context_text = "\n\n".join(context_chunks)
 
         messages = [self._build_system_message()]

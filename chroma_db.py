@@ -44,9 +44,13 @@ class DB:
         return responses
 
     async def process_all_files(self, source_folder):
-        if os.path.exists("chroma_storage/.processed"):
-            print("ChromaDB already initialized. Skipping.")
+        processed_flag = "chroma_storage/.processed"
+
+        if os.path.exists(processed_flag) and self.collection.count() > 0:
+            print("ChromaDB already initialized and populated. Skipping.")
             return
+        elif os.path.exists(processed_flag):
+            print(".processed exists but collection is empty. Reprocessing...")
 
         for filename in os.listdir(source_folder):
             file_path = os.path.join(source_folder, filename)

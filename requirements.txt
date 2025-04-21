@@ -5,3 +5,5 @@ asyncio
 dotenv
 pydub
 openai
+chromadb
+langchain_community
