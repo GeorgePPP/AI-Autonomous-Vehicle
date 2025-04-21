@@ -149,7 +149,7 @@ class NDII:
         
         return {"role": "system", "content": text_content}
     
-    async def retrieve_context(self, user_query: str, k: int = 3) -> list[str]:
+    async def retrieve_context(self, user_query: str, k: int = 3) -> Tuple[list[str], List[Dict]]:
         """Retrieve relevant chunks from ChromaDB using OpenAI embedding.
         
         Args:
@@ -157,19 +157,19 @@ class NDII:
             k: Number of results to retrieve
             
         Returns:
-            List of document chunks retrieved from the database
+            Tuple of (list of document chunks, list of metadata for those chunks)
         """
         try:
             logger.info(f"Generating embedding for query: '{user_query[:50]}...'")
             response = await self.client.embeddings.create(
-                model="text-embedding-3-small",
+                model="text-embedding-3-large",
                 input=user_query
             )
             embedding = response.data[0].embedding
             logger.info("Embedding created successfully")
         except Exception as e:
             logger.error(f"Embedding generation failed: {e}")
-            return []
+            return [], []
         
         try:
             results = self.collection.query(
@@ -178,11 +178,20 @@ class NDII:
             )
             
             retrieved_docs = results["documents"][0] if results["documents"] else []
+            metadatas = results["metadatas"][0] if results["metadatas"] else []
+            
+            # Log the retrieved chunks (truncated for readability)
+            for i, (doc, meta) in enumerate(zip(retrieved_docs, metadatas)):
+                truncated_content = doc[:100] + "..." if len(doc) > 100 else doc
+                logger.info(f"Retrieved chunk {i+1}: {truncated_content}")
+                if meta:
+                    logger.info(f"Chunk {i+1} metadata: {meta}")
+            
             logger.info(f"Retrieved {len(retrieved_docs)} context chunks from database")
-            return retrieved_docs
+            return retrieved_docs, metadatas
         except Exception as e:
             logger.error(f"Database query failed: {e}")
-            return []
+            return [], []
 
     async def _transcribe_audio(self, audio_data: Dict) -> str:
         """Transcribe audio data using OpenAI's Whisper API.
@@ -206,7 +215,8 @@ class NDII:
 
             logger.info("Transcribing audio input")
             transcription = await self.client.audio.transcriptions.create(
-                model="whisper-1",
+                model="gpt-4o-transcribe",
+                language='en',
                 file=audio_file
             )
             
@@ -216,19 +226,25 @@ class NDII:
             logger.error(f"Audio transcription failed: {e}")
             raise
         
-    async def _prepare_messages_for_llm(self, user_query: str) -> List[Dict[str, Any]]:
+    async def _prepare_messages_for_llm(self, user_query: str) -> Tuple[List[Dict[str, Any]], str]:
         """Prepare messages for the LLM API call with RAG context.
         
         Args:
             user_query: User's transcribed query text
             
         Returns:
-            List of message dictionaries for the LLM API
+            Tuple of (list of message dictionaries for the LLM API, context text)
         """
         # Retrieve context based on user query
-        context_chunks = await self.retrieve_context(user_query)
-        print(f"Chunks:\n{context_chunks}")
+        context_chunks, metadata = await self.retrieve_context(user_query)
         context_text = "\n\n".join(context_chunks)
+
+        # Store the context in the current_context for reference
+        self.current_context = {
+            "chunks": context_chunks,
+            "metadata": metadata,
+            "for_query": user_query
+        }
 
         # Start with system message
         messages = [self._build_system_message()]
@@ -251,7 +267,8 @@ class NDII:
         })
         
         logger.info(f"Prepared {len(messages)} messages for LLM")
-        return messages
+        return messages, context_text
+
 
     async def generate_speech(self, text: str = "", model: str = "gpt-4o-mini-tts", 
                              voice: str = "alloy", format: str = "wav", 
@@ -335,7 +352,7 @@ class NDII:
             return "I need an audio input to process your request.", None
         
         # Prepare messages for the LLM API with transcribed text
-        messages = await self._prepare_messages_for_llm(user_query)
+        messages, context_text = await self._prepare_messages_for_llm(user_query)
         
         # Get response from LLM
         try:

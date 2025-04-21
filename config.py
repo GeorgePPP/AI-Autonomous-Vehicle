@@ -14,7 +14,7 @@ AUDIO = {
 }
 
 RAG = {
-    "embedding_model": "text-embedding-3-small",
+    "embedding_model": "text-embedding-3-large",
     "chunk_size": 1000,
     "chunk_overlap": 400,
     "collection_name": "ndii_documents",
