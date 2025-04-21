@@ -32,7 +32,13 @@ async def lifespan(app: FastAPI):
     global nd_ii
     api_key = get_api_key()
     nd_ii = await NDII.create_db(api_key, max_history=4, rag_config=config.RAG)  # Keep only last 2 exchanges
+    
+    # Yield control back to FastAPI
     yield
+    
+    # Clean up resources when shutting down
+    await nd_ii.close()
+    logger.info("Application shutdown, resources cleaned up")
 
 # Initialize FastAPI app
 app = FastAPI(lifespan=lifespan)

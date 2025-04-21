@@ -11,7 +11,7 @@ from utils import prepare_audio_message
 import numpy as np
 
 import config
-from chroma_db import DB
+from vector_store import VectorStore, PGVectorConfig
 
 # Set up logging
 logging.basicConfig(
@@ -25,13 +25,13 @@ logging.basicConfig(
 logger = logging.getLogger("NDII")
 
 class NDII:
-    def __init__(self, client, prompt_templates, db, api_key, max_history=4):
+    def __init__(self, client, prompt_templates, vector_store, api_key, max_history=4):
         """Initialize the NDII chatbot with necessary components.
         
         Args:
             client: AsyncOpenAI client instance
             prompt_templates: Dictionary of prompt templates
-            db: ChromaDB instance
+            vector_store: VectorStore instance
             api_key: OpenAI API key
             max_history: Maximum number of conversation turns to keep in history
         """
@@ -42,8 +42,7 @@ class NDII:
         self.conversation_history = []
         self.current_context = {}
         self.max_history = max_history
-        self.db = db
-        self.collection = self.db.collection
+        self.vector_store = vector_store
     
     @classmethod
     async def create_db(cls, api_key: str, max_history: int = 2, rag_config: dict = None):
@@ -52,25 +51,38 @@ class NDII:
         Args:
             api_key: OpenAI API key
             max_history: Maximum number of conversation turns to keep in history
+            rag_config: Configuration for RAG system
             
         Returns:
             NDII instance with initialized database
         """
-        logger.info("Creating NDII instance with database")
+        logger.info("Creating NDII instance with vector database")
         client = AsyncOpenAI()
         client.api_key = api_key
 
         try:
-            db = DB(persist_directory=config.PERSIST_DIRECTORY, collection_name=config.COLLECTION_NAME, rag_config=rag_config)
-            await db.process_all_files("source")
-            logger.info("Database successfully processed all files")
+            # Create PGVector configuration from config
+            pg_config = PGVectorConfig(
+                connection_string=config.PGVECTOR["connection_string"],
+                table_name=config.PGVECTOR["table_name"],
+                embedding_dim=config.PGVECTOR["embedding_dim"],
+                index_method=config.PGVECTOR["index_method"],
+                index_params=config.PGVECTOR["index_params"]
+            )
+            
+            # Initialize vector store
+            vector_store = VectorStore(pg_config=pg_config, rag_config=rag_config)
+            
+            # Process all files in the source directory
+            await vector_store.process_all_files(rag_config.get("source_folder", "source"))
+            logger.info("Vector database successfully processed all files")
         except Exception as e:
-            logger.error(f"Database initialization failed: {e}")
+            logger.error(f"Vector database initialization failed: {e}")
             raise
 
         prompt_templates = cls._load_prompts()
 
-        return cls(client, prompt_templates, db, api_key, max_history)
+        return cls(client, prompt_templates, vector_store, api_key, max_history)
 
     @staticmethod
     def _load_prompts() -> Dict:
@@ -149,36 +161,36 @@ class NDII:
         
         return {"role": "system", "content": text_content}
     
-    async def retrieve_context(self, user_query: str, k: int = 3) -> Tuple[list[str], List[Dict]]:
-        """Retrieve relevant chunks from ChromaDB using OpenAI embedding.
+    async def retrieve_context(self, user_query: str, k: int = None) -> Tuple[list[str], List[Dict]]:
+        """Retrieve relevant chunks from pgvector using OpenAI embedding.
         
         Args:
             user_query: User's query text to match against the vector database
-            k: Number of results to retrieve
+            k: Number of results to retrieve (overrides config if provided)
             
         Returns:
             Tuple of (list of document chunks, list of metadata for those chunks)
         """
-        try:
-            logger.info(f"Generating embedding for query: '{user_query[:50]}...'")
-            response = await self.client.embeddings.create(
-                model="text-embedding-3-large",
-                input=user_query
-            )
-            embedding = response.data[0].embedding
-            logger.info("Embedding created successfully")
-        except Exception as e:
-            logger.error(f"Embedding generation failed: {e}")
-            return [], []
+        # Use k from parameters or fall back to config
+        k = k or config.RAG.get("retrieval_k", 3)
+        
+        # Get similarity threshold from config
+        threshold = config.RAG.get("similarity_threshold", 0.0)
         
         try:
-            results = self.collection.query(
-                query_embeddings=[embedding],
-                n_results=k
+            # Use vector store's retrieve_context method
+            retrieved_docs, metadatas = await self.vector_store.retrieve_context(
+                query=user_query,
+                k=k,
+                threshold=threshold
             )
             
-            retrieved_docs = results["documents"][0] if results["documents"] else []
-            metadatas = results["metadatas"][0] if results["metadatas"] else []
+            # Store the context in the current_context for reference
+            self.current_context = {
+                "chunks": retrieved_docs,
+                "metadata": metadatas,
+                "for_query": user_query
+            }
             
             # Log the retrieved chunks (truncated for readability)
             for i, (doc, meta) in enumerate(zip(retrieved_docs, metadatas)):
@@ -186,11 +198,14 @@ class NDII:
                 logger.info(f"Retrieved chunk {i+1}: {truncated_content}")
                 if meta:
                     logger.info(f"Chunk {i+1} metadata: {meta}")
+                    if 'similarity_score' in meta:
+                        logger.info(f"Similarity score: {meta['similarity_score']:.4f}")
             
-            logger.info(f"Retrieved {len(retrieved_docs)} context chunks from database")
+            logger.info(f"Retrieved {len(retrieved_docs)} context chunks from vector database")
             return retrieved_docs, metadatas
+            
         except Exception as e:
-            logger.error(f"Database query failed: {e}")
+            logger.error(f"Context retrieval failed: {e}")
             return [], []
 
     async def _transcribe_audio(self, audio_data: Dict) -> str:
@@ -217,6 +232,7 @@ class NDII:
             transcription = await self.client.audio.transcriptions.create(
                 model="gpt-4o-transcribe",
                 language='en',
+                temperature=0,
                 file=audio_file
             )
             
@@ -238,13 +254,6 @@ class NDII:
         # Retrieve context based on user query
         context_chunks, metadata = await self.retrieve_context(user_query)
         context_text = "\n\n".join(context_chunks)
-
-        # Store the context in the current_context for reference
-        self.current_context = {
-            "chunks": context_chunks,
-            "metadata": metadata,
-            "for_query": user_query
-        }
 
         # Start with system message
         messages = [self._build_system_message()]
@@ -410,3 +419,11 @@ class NDII:
         logger.info("Resetting conversation history")
         self.conversation_history = []
         self.current_context = {}
+        
+    async def close(self):
+        """Close database connections"""
+        try:
+            await self.vector_store.close()
+            logger.info("Vector store connections closed")
+        except Exception as e:
+            logger.error(f"Error closing vector store: {e}")

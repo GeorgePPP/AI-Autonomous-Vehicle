@@ -13,18 +13,33 @@ AUDIO = {
     "instructions": "Please speak in a super cheerful and welcoming with moderate tone that shows consideration."
 }
 
+# PostgreSQL vector database configuration
+PGVECTOR = {
+    "connection_string": "postgresql://postgres:1234@localhost:5432/ndii_db",
+    "table_name": "document_embeddings",
+    "embedding_dim": 1536,  # Dimension for OpenAI text-embedding-3-large
+    "index_method": "hnsw",  # Options: 'hnsw' (faster but approximate), 'ivfflat' (balance), or None (exact but slower)
+    "index_params": {
+        "m": 16,  # Number of connections per node (HNSW)
+        "ef_construction": 64  # Construction time/accuracy tradeoff (HNSW)
+    }
+}
+
+# RAG configuration
 RAG = {
     "embedding_model": "text-embedding-3-large",
     "chunk_size": 1000,
     "chunk_overlap": 400,
-    "collection_name": "ndii_documents",
     "retrieval_k": 3,
-    "reranking_enabled": False,
-    "min_relevance_score": 0.7,
+    "similarity_threshold": 0.7,  # Minimum similarity score (0-1)
+    "use_metadata_filtering": True,  # Enable filtering by metadata
+    "reranking_enabled": False,  # Whether to use a separate reranker model
     "source_folder": "source",
     "document_types": ["docx", "txt", "pdf"],
-    "use_metadata": True,
-    "batch_size": 20
+    "use_recursive_splitter": True,  # Use recursive text splitter for better chunks
+    "batch_size": 5,  # Number of documents to embed in a batch
+    "rate_limit_delay": 0.05,  # Delay between API calls in seconds
+    "force_reprocess": False  # Whether to force reprocessing of all documents
 }
 
 # Server configuration
@@ -45,7 +60,3 @@ WELCOME_MESSAGE = "Hello! I'm your autonomous vehicle assistant. Press the micro
 # Template and static directories
 TEMPLATE_DIR = "templates"
 STATIC_DIR = "static"
-
-# Vector database configuration
-PERSIST_DIRECTORY = "chroma_storage/"
-COLLECTION_NAME = "ndii_collection"
