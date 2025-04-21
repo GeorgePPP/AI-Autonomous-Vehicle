@@ -3,6 +3,8 @@
 # Model configuration
 TEXT = {
     "model": "gpt-4o",
+    "temperature": 0.6,
+    "top_p": 0.5
 }
 
 # Audio configuration
