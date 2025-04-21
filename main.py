@@ -21,9 +21,6 @@ import config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize ND II with API key
-api_key = get_api_key()
-
 # Store active sessions
 sessions = {}
 
@@ -47,13 +44,9 @@ app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 
 def process_nd_ii_response(response):
     """Process NDII response and extract text, audio data, and metadata"""
-    # For the updated implementation, response is now a tuple of (text_output, audio_base64, message_metadata)
     text_output, audio_base64, message_metadata = response
     
-    # Default fallback message if text is empty
-    if not text_output:
-        text_output = "I received your message."
-        
+    # Return the components directly - redundant check will be done in add_messages_to_session
     return text_output, audio_base64, message_metadata
 
 def add_messages_to_session(session_id, user_content, bot_content, bot_audio=None, message_metadata=None):
@@ -119,7 +112,7 @@ async def save_chat_to_file(session_id: str):
     # Create chatlog directory if it doesn't exist
     os.makedirs("chatlog", exist_ok=True)
     
-    # Use a single file per session that gets updated
+    # Use a single file per session
     filename = f"chatlog/session_{session_id}.json"
     
     # Create a clean copy of messages without audio data
@@ -130,12 +123,9 @@ async def save_chat_to_file(session_id: str):
             del msg_copy["audio_base64"]
         messages.append(msg_copy)
 
-    # Prepare the data to save
     chat_data = {
         "session_id": session_id,
-        "created_at": sessions[session_id]["created_at"].isoformat(),
-        "updated_at": datetime.now().isoformat(),
-        "message_count": len(messages),
+        "timestamp": datetime.now().isoformat(),
         "messages": messages
     }
     
@@ -147,7 +137,7 @@ async def save_chat_to_file(session_id: str):
     try:
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(chat_data, f, indent=2, default=str)
-        logger.info(f"Chat log updated in {filename}")
+        logger.info(f"Chat log saved to {filename}")
         return True
     except Exception as e:
         logger.error(f"Error saving chat log: {e}")
@@ -155,7 +145,6 @@ async def save_chat_to_file(session_id: str):
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    # Generate a unique session ID
     session_id = str(uuid.uuid4())
     sessions[session_id] = {
         "messages": [],

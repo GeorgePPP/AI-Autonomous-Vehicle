@@ -26,7 +26,7 @@ logger = logging.getLogger("NDII")
 
 class NDII:
     def __init__(self, client, prompt_templates, vector_store, api_key, max_history=4):
-        """Initialize the NDII chatbot with necessary components.
+        """Initialize the NDII chatbot.
         
         Args:
             client: AsyncOpenAI client instance
@@ -36,7 +36,6 @@ class NDII:
             max_history: Maximum number of conversation turns to keep in history
         """
         self.client = client
-        self.api_key = api_key
         self.client.api_key = api_key
         self.prompt_templates = prompt_templates
         self.conversation_history = []

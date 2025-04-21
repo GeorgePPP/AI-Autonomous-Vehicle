@@ -42,7 +42,7 @@ class VectorStore:
         # Log the configuration
         logger.info(f"VectorStore initialized with table: {pg_config.table_name}")
         logger.info(f"RAG config: {self.rag_config}")
-        
+
     async def initialize_db(self):
         """Initialize the database table and extensions."""
         async with self.pool.connection() as conn:
@@ -63,24 +63,29 @@ class VectorStore:
                     );
                 """)
                 
-                # Create the vector index
-                if self.pg_config.index_method == "hnsw":
-                    index_params = self.pg_config.index_params or {"m": 16, "ef_construction": 64}
-                    param_str = ", ".join(f"{k}={v}" for k, v in index_params.items())
+                # Create the vector index based on the configuration
+                index_params = self.pg_config.index_params or {}
+                index_method = self.pg_config.index_method
+
+                # Build index parameters string if parameters exist
+                param_str = ""
+                if index_params:
+                    param_str = "WITH (" + ", ".join(f"{k}={v}" for k, v in index_params.items()) + ")"
+                
+                # Create appropriate index based on method
+                if index_method == "hnsw":
                     await cur.execute(f"""
                         CREATE INDEX IF NOT EXISTS {self.pg_config.table_name}_embedding_idx 
                         ON {self.pg_config.table_name} 
                         USING hnsw (embedding vector_l2_ops)
-                        WITH ({param_str});
+                        {param_str};
                     """)
-                elif self.pg_config.index_method == "ivfflat":
-                    index_params = self.pg_config.index_params or {"lists": 100}
-                    param_str = ", ".join(f"{k}={v}" for k, v in index_params.items())
+                elif index_method == "ivfflat":
                     await cur.execute(f"""
                         CREATE INDEX IF NOT EXISTS {self.pg_config.table_name}_embedding_idx 
                         ON {self.pg_config.table_name} 
                         USING ivfflat (embedding vector_l2_ops)
-                        WITH ({param_str});
+                        {param_str};
                     """)
                 else:
                     # Default to exact search with no special index
@@ -193,40 +198,34 @@ class VectorStore:
         # Implement batching if specified in config
         batch_size = self.rag_config.get("batch_size", 20)
         all_embeddings = []
+        rate_limit_delay = self.rag_config.get("rate_limit_delay", 0)
 
         try:
-            if batch_size > 1:
-                # Process in batches
-                for i in range(0, len(texts), batch_size):
-                    batch = texts[i:i+batch_size]
-                    batch_contents = [text.page_content for text in batch]
-                    
-                    # Log batch processing
+            # Process in batches (batch_size=1 is handled by the same code)
+            for i in range(0, len(texts), max(1, batch_size)):
+                batch = texts[i:i+batch_size]
+                batch_contents = [text.page_content for text in batch]
+                
+                # Log batch processing
+                if batch_size > 1:
                     logger.info(f"Processing batch {i//batch_size + 1}/{(len(texts)+batch_size-1)//batch_size}")
-                    
-                    response = await self.get_embedding(batch_contents)
-                    
-                    # Extract embeddings from response
+                else:
+                    logger.info(f"Processing document {i+1}/{len(texts)}")
+                
+                response = await self.get_embedding(batch_contents)
+                
+                # Extract embeddings from response
+                if batch_size > 1:
                     batch_embeddings = [item.embedding for item in response.data]
                     all_embeddings.extend(batch_embeddings)
-                    
-                    # Rate limiting - optional sleep between batches
-                    rate_limit_delay = self.rag_config.get("rate_limit_delay", 0)
-                    if rate_limit_delay > 0 and i + batch_size < len(texts):
-                        await asyncio.sleep(rate_limit_delay)
-            else:
-                # Process one by one (less efficient)
-                for i, text in enumerate(texts):
-                    logger.info(f"Processing document {i+1}/{len(texts)}")
-                    response = await self.get_embedding(text.page_content)
+                else:
                     embedding = response.data[0].embedding
                     all_embeddings.append(embedding)
+                
+                # Rate limiting - optional sleep between batches
+                if rate_limit_delay > 0 and i + max(1, batch_size) < len(texts):
+                    await asyncio.sleep(rate_limit_delay)
                     
-                    # Optional rate limiting
-                    rate_limit_delay = self.rag_config.get("rate_limit_delay", 0)
-                    if rate_limit_delay > 0 and i < len(texts) - 1:
-                        await asyncio.sleep(rate_limit_delay)
-                        
             return all_embeddings
             
         except Exception as e:
