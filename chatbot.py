@@ -46,13 +46,27 @@ class NDII:
         self.collection = self.db.collection
     
     @classmethod
-    async def create_db(cls, api_key: str, max_history: int = 2):
+    async def create_db(cls, api_key: str, max_history: int = 2, rag_config: dict = None):
+        """Create and initialize the database and NDII instance.
+        
+        Args:
+            api_key: OpenAI API key
+            max_history: Maximum number of conversation turns to keep in history
+            
+        Returns:
+            NDII instance with initialized database
+        """
+        logger.info("Creating NDII instance with database")
         client = AsyncOpenAI()
         client.api_key = api_key
 
-        db = DB(persist_directory=config.PERSIST_DIRECTORY, collection_name=config.COLLECTION_NAME)
-        await db.process_all_files("source")
-        print(f"[COLLECTION] {db.collection.count()}")
+        try:
+            db = DB(persist_directory=config.PERSIST_DIRECTORY, collection_name=config.COLLECTION_NAME, rag_config=rag_config)
+            await db.process_all_files("source")
+            logger.info("Database successfully processed all files")
+        except Exception as e:
+            logger.error(f"Database initialization failed: {e}")
+            raise
 
         prompt_templates = cls._load_prompts()
 

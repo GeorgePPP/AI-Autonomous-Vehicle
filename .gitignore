@@ -4,6 +4,9 @@
 *.ipynb
 *.pyc
 
+# Logging
+*.log
+
 # Data Directory
 Audio_Recorder_Python/
 chatlog/

@@ -31,7 +31,7 @@ sessions = {}
 async def lifespan(app: FastAPI):
     global nd_ii
     api_key = get_api_key()
-    nd_ii = await NDII.create_db(api_key, max_history=2)  # Keep only last 2 exchanges
+    nd_ii = await NDII.create_db(api_key, max_history=4, rag_config=config.RAG)  # Keep only last 2 exchanges
     yield
 
 # Initialize FastAPI app

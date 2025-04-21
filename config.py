@@ -13,6 +13,20 @@ AUDIO = {
     "instructions": "Please speak in a super cheerful and welcoming with moderate tone that shows consideration."
 }
 
+RAG = {
+    "embedding_model": "text-embedding-3-small",
+    "chunk_size": 1000,
+    "chunk_overlap": 400,
+    "collection_name": "ndii_documents",
+    "retrieval_k": 3,
+    "reranking_enabled": False,
+    "min_relevance_score": 0.7,
+    "source_folder": "source",
+    "document_types": ["docx", "txt", "pdf"],
+    "use_metadata": True,
+    "batch_size": 20
+}
+
 # Server configuration
 HOST = "0.0.0.0"
 PORT = 8000
