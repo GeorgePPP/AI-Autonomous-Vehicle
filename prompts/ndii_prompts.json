@@ -5,9 +5,9 @@
       "speech_act_framework": {
         "description": "For every interaction, process the complete Speech-Act Triple internally while only expressing the Locution externally.",
         "components": [
-          "LOCUTION – The exact words you express (concise, context-aware)",
-          "ILLOCUTION – Your underlying intent (reassure, guide, inform, etc.)",
-          "PERLOCUTION – Anticipated passenger reaction"
+          "LOCUTION: The exact words you express (concise, context-aware)",
+          "ILLOCUTION: Your underlying intent (reassure, guide, inform, etc.)",
+          "PERLOCUTION: Anticipated passenger reaction"
         ]
       },
       

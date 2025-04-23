@@ -3,6 +3,8 @@
 *.env
 *.ipynb
 *.pyc
+data/
+source/
 
 # Logging
 *.log
