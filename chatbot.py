@@ -1,14 +1,14 @@
-import asyncio
 import json
 import base64
 import io
 import logging
-from openai import AsyncOpenAI
-import time
-from typing import List, Dict, Optional, Union, Any, Tuple
+from typing import List, Dict, Optional, Any, Tuple
 from pathlib import Path
+
+from openai import AsyncOpenAI
 from utils import prepare_audio_message
-import numpy as np
+from opik import track
+from opik.integrations.openai import track_openai
 
 import config
 from vector_store import VectorStore, PGVectorConfig
@@ -56,7 +56,7 @@ class NDII:
             NDII instance with initialized database
         """
         logger.info("Creating NDII instance with vector database")
-        client = AsyncOpenAI()
+        client = track_openai(AsyncOpenAI())
         client.api_key = api_key
 
         try:
@@ -116,47 +116,48 @@ class NDII:
         Returns:
             Dictionary with system message role and content
         """
-        system_prompt = self.prompt_templates["system_prompt"]
-
-        # Base system message sections loaded from config
-        sections = [
-            system_prompt['context'],
+        sp = self.prompt_templates["system_prompt"]
+        
+        # Build main content sections more concisely
+        content = [
+            sp['context'],
             
             "SPEECH-ACT FRAMEWORK:",
-            system_prompt['speech_act_framework']['description'],
-            "- " + "\n- ".join(system_prompt['speech_act_framework']['components']),
+            sp['speech_act_framework']['description'],
+            "- " + "\n- ".join(sp['speech_act_framework']['components']),
             
             "INTERACTION PRINCIPLES:",
-            "- " + "\n- ".join(system_prompt['principles']),
+            sp['principles'],
             
             "CONVERSATION MODES:",
-            "- " + "\n- ".join([f"{k}: {v}" for k, v in system_prompt['modes'].items()]),
+            "- Representatives: " + sp['modes']['representatives'],
+            "- Directives: " + sp['modes']['directives'],
+            "- Commissive: " + sp['modes']['commissive'],
+            "- Expressives: " + sp['modes']['expressives'],
+            "- Declarations: " + sp['modes']['declarations'],
             
             "CONSTRAINTS:",
-            "- " + "\n- ".join(system_prompt['constraints']),
+            "- " + "\n- ".join(sp['constraints']),
             
             "PERSONA:",
-            system_prompt['persona'],
+            sp['persona'],
             
             "RESPONSE FORMAT:",
-            system_prompt['response_format'],
+            sp['response_format']
         ]
         
-        # Content assembled with proper spacing
-        text_content = "\n\n".join(sections)
+        # Add examples more efficiently
+        if "few_shot_examples" in sp:
+            content.append("SPEECH-ACT EXAMPLES:")
+            for i, ex in enumerate(sp["few_shot_examples"]):
+                content.append(f"Example {i+1} - {ex['context']}:")
+                content.append(f"Passenger: {ex['user']}")
+                content.append(f"ND II (Locution): {ex['assistant_locution']}")
+                content.append(f"[Internal Illocution: {ex['assistant_illocution']}]")
+                content.append(f"[Internal Perlocution: {ex['assistant_perlocution']}]")
         
-        # Embed few-shot examples into the system message
-        examples = system_prompt.get("few_shot_examples", [])
-        if examples:
-            examples_text = "\n\nSPEECH-ACT EXAMPLES:\n"
-            for i, example in enumerate(examples):
-                examples_text += f"Example {i+1} - {example['context']}:\n"
-                examples_text += f"Passenger: {example['user']}\n"
-                examples_text += f"ND II (Locution): {example['assistant_locution']}\n"
-                examples_text += f"[Internal Illocution: {example['assistant_illocution']}]\n"
-                examples_text += f"[Internal Perlocution: {example['assistant_perlocution']}]\n\n"
-            
-            text_content += examples_text
+        # Join with single newlines to reduce unnecessary spacing
+        text_content = "\n".join(content)
         
         return {"role": "system", "content": text_content}
     
@@ -201,11 +202,11 @@ class NDII:
                         logger.info(f"Similarity score: {meta['similarity_score']:.4f}")
             
             logger.info(f"Retrieved {len(retrieved_docs)} context chunks from vector database")
-            return retrieved_docs, metadatas
+            return "\n\n".join(retrieved_docs)
             
         except Exception as e:
             logger.error(f"Context retrieval failed: {e}")
-            return [], []
+            return ""
 
     async def _transcribe_audio(self, audio_data: Dict) -> str:
         """Transcribe audio data using OpenAI's Whisper API.
@@ -240,7 +241,7 @@ class NDII:
         except Exception as e:
             logger.error(f"Audio transcription failed: {e}")
             raise
-        
+    
     async def _prepare_messages_for_llm(self, user_query: str) -> Tuple[List[Dict[str, Any]], str]:
         """Prepare messages for the LLM API call with RAG context.
         
@@ -251,8 +252,7 @@ class NDII:
             Tuple of (list of message dictionaries for the LLM API, context text)
         """
         # Retrieve context based on user query
-        context_chunks, metadata = await self.retrieve_context(user_query)
-        context_text = "\n\n".join(context_chunks)
+        context_text = await self.retrieve_context(user_query)
 
         # Start with system message
         messages = [self._build_system_message()]
@@ -315,26 +315,63 @@ class NDII:
         except Exception as e:
             logger.error(f"Error generating speech: {e}")
             return None
+    
+    async def get_llm_response(self, messages: list, text_config: dict) -> str:
+        """Get response from LLM.
+        
+        Args:
+            messages: List of message dictionaries for the LLM API
+            text_config: Configuration for the text LLM
+            
+        Returns:
+            Text response from the LLM
+            
+        Raises:
+            Exception: If LLM request fails
+        """
+        logger.info(f"Sending request to LLM with {len(messages)} messages")
+        
+        # Create the chat completion
+        response = await self.client.chat.completions.create(
+            messages=messages,
+            **text_config
+        )
+        
+        if not response.choices:
+            logger.warning("No choices in LLM response")
+            return "I didn't receive a response. Please try again."
+            
+        # Get the text response
+        text_output = response.choices[0].message.content
+        
+        if not text_output:
+            logger.warning("Received empty response from LLM")
+            text_output = "I processed your request but couldn't generate a response."
+        
+        logger.info(f"Generated text response: '{text_output[:50]}...'")
+        return text_output
 
     async def send_message(
-        self, 
-        audio_base64,
-        audio_input_format,
-        text_config,
-        audio_config
+        self,
+        audio_base64=None,
+        audio_format=None,  # Only used for audio
+        text_config=None,
+        audio_config=None,
     ) -> Tuple[str, Optional[str], Dict[str, Any]]:
         """Send a message to ND II and get a response with optional audio.
         
         Args:
-            audio_base64: Base64-encoded audio input
-            audio_input_format: Format of the input audio
+            input: Text string or base64-encoded audio string
+            input_type: Type of input - "text" or "audio"
+            audio_format: Format of audio input (only used when input_type is "audio")
             text_config: Configuration for the text LLM
-            audio_config: Configuration for the TTS
+            audio_config: Configuration for the TTS response
+            mode: "inference" or "evaluation"
             
         Returns:
             Tuple of (text_response, audio_base64, message_metadata)
         """
-        # Initialize metadata dict to track important information
+         # Initialize metadata dict to track important information
         message_metadata = {
             "transcribed_query": None,
             "retrieved_chunks": [],
@@ -351,7 +388,7 @@ class NDII:
                 
             try:
                 # Prepare the audio data for the API
-                audio_data = await prepare_audio_message(audio_base64, audio_input_format)
+                audio_data = await prepare_audio_message(audio_base64, audio_format)
                 if not audio_data:
                     logger.error("Failed to prepare audio data")
                     return "There was an issue processing your audio. Please try again.", None, message_metadata
@@ -367,65 +404,104 @@ class NDII:
             logger.warning("No audio input provided")
             return "I need an audio input to process your request.", None, message_metadata
         
-        # Prepare messages for the LLM API with transcribed text
+        # Prepare messages for the LLM API
         messages, _ = await self._prepare_messages_for_llm(user_query)
         
-        # Store retrieved chunks for logging
+        # Store retrieved context information
         if self.current_context:
             message_metadata["retrieved_chunks"] = self.current_context.get("chunks", [])
             message_metadata["chunk_metadata"] = self.current_context.get("metadata", [])
         
         # Get response from LLM
         try:
-            logger.info(f"Sending request to LLM with {len(messages)} messages")
+            text_output = await self.get_llm_response(messages, text_config)
             
-            # Create the chat completion
-            response = await self.client.chat.completions.create(
-                messages=messages,
-                **text_config
-            )
+            # Update conversation history
+            self.conversation_history.append({"role": "user", "content": user_query})
+            self.conversation_history.append({"role": "assistant", "content": text_output})
             
-            if response.choices:
-                # Get the text response
-                text_output = response.choices[0].message.content
-                
-                if not text_output:
-                    logger.warning("Received empty response from LLM")
-                    text_output = "I processed your request but couldn't generate a response."
-                
-                # Add user input to history
-                self.conversation_history.append({
-                    "role": "user",
-                    "content": user_query
-                })
-                
-                # Add assistant response to history
-                self.conversation_history.append({
-                    "role": "assistant", 
-                    "content": text_output
-                })
-                
-                # Trim history if it exceeds max_history * 2 * 2 (each turn is 2 messages)
-                if self.max_history > 0 and len(self.conversation_history) > self.max_history * 4:
-                    self.conversation_history = self.conversation_history[-(self.max_history * 4):]
-                
-                logger.info(f"Generated text response: '{text_output[:50]}...'")
-                
-                # Generate speech from text response
-                audio_base64 = await self.generate_speech(
-                    text=text_output,
-                    **audio_config
-                )
-                
-                return text_output, audio_base64, message_metadata
-            else:
-                logger.warning("No choices in LLM response")
-                return "I didn't receive a response. Please try again.", None, message_metadata
+            # Trim history if needed
+            if self.max_history > 0 and len(self.conversation_history) > self.max_history * 4:
+                self.conversation_history = self.conversation_history[-(self.max_history * 4):]
+            
+            # Generate speech from text response
+            audio_base64 = await self.generate_speech(text=text_output, **audio_config)
+            
+            return text_output, audio_base64, message_metadata
             
         except Exception as e:
             logger.error(f"Error in LLM request: {e}")
-            return f"I encountered an error while processing your request: {str(e)}", None, message_metadata
+            return f"Error processing your request: {str(e)}", None, message_metadata
+    
+
+    async def evaluate(self, metrics=None, eval_config=None):
+        """Evaluate NDII performance using Opik.
+        
+        Args:
+            metrics: List of Opik metrics to use (defaults to Hallucination)
+            
+        Returns:
+            Evaluation results from Opik
+        """
+        from opik import Opik
+        from opik.evaluation import evaluate
+        from opik.evaluation.metrics import (Hallucination, Moderation, AnswerRelevance, ContextPrecision, ContextRecall)
+        import asyncio, nest_asyncio
+        
+        # Apply nest_asyncio to allow running asyncio.run inside another event loop
+        nest_asyncio.apply()
+        
+        # Use default metrics if none provided
+        if not metrics:
+            metrics = [Hallucination(), Moderation(), AnswerRelevance(), ContextPrecision(), ContextRecall()]
+
+        if not eval_config:
+            eval_config = {
+                "model": "gpt-4o",
+                "temperature": 0.2,
+                "top_p": 0.2
+            }
+        
+        # Define evaluation task with asyncio.run as recommended in the docs
+        def evaluation_task(data_item):
+            # Create a separate async function to handle the send_message call
+
+            async def process_item():
+                messages, context = await self._prepare_messages_for_llm(data_item['input'])
                 
+                text_output = await self.get_llm_response(
+                    messages, eval_config
+                )
+                
+                return {
+                    "input": data_item['input'],
+                    "output": text_output,
+                    "context": context,
+                    "reference": data_item['expected_output']['assistant_answer']
+                }
+            
+            # Use asyncio.run as recommended in the documentation
+            return asyncio.run(process_item())
+        
+        client = Opik()
+        dataset = client.get_or_create_dataset(name="AI_AV")
+
+        # Run evaluation with task_threads=1 as recommended for asyncio use
+        evaluation_results = evaluate(
+            dataset=dataset,
+            task=evaluation_task,
+            scoring_metrics=metrics,
+            experiment_config={
+                "model": config.TEXT.get("model", "gpt-4o"),
+                "max_history": self.max_history,
+                "temperature": config.TEXT.get("temperature", 0.7)
+            },
+            task_threads=1  # Important: set to 1 as recommended in docs
+        )
+        
+        logger.info(f"Evaluation completed. Results: {evaluation_results}")
+        return evaluation_results
+        
     def reset_conversation(self):
         """Reset the conversation history"""
         logger.info("Resetting conversation history")
@@ -439,3 +515,4 @@ class NDII:
             logger.info("Vector store connections closed")
         except Exception as e:
             logger.error(f"Error closing vector store: {e}")
+

@@ -1,22 +1,21 @@
-from fastapi import FastAPI, Request, Form, WebSocket
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, Request, WebSocket
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 from contextlib import asynccontextmanager
 
 import uvicorn
-import base64
 import os
 import json
 import uuid
-import asyncio
 import logging
 from datetime import datetime
 
 from utils import get_api_key, test_base_64_string
 from chatbot import NDII
 import config
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,13 +40,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory=config.TEMPLATE_DIR)
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
-
-def process_nd_ii_response(response):
-    """Process NDII response and extract text, audio data, and metadata"""
-    text_output, audio_base64, message_metadata = response
-    
-    # Return the components directly - redundant check will be done in add_messages_to_session
-    return text_output, audio_base64, message_metadata
 
 def add_messages_to_session(session_id, user_content, bot_content, bot_audio=None, message_metadata=None):
     """Add user and bot messages to a session"""
@@ -213,15 +205,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     
                 try:
                     # Send to ND II for processing - now returns tuple of (text, audio_base64, message_metadata)
-                    response = await nd_ii.send_message(
-                        audio_base64,
-                        audio_input_format,
-                        config.TEXT,
-                        config.AUDIO
-                    )                    
+                    text_output, response_audio, message_metadata = await nd_ii.send_message(
+                        audio_base64=audio_base64,
+                        audio_format=audio_input_format,
+                        text_config=config.TEXT,
+                        audio_config=config.AUDIO
+                    )
                     
-                    # Process the response - unpack the tuple
-                    text_output, response_audio, message_metadata = process_nd_ii_response(response)
                     logger.info(f"Response received - Audio output: {'Yes' if response_audio else 'No'}")
                     
                     # Use the actual transcription as the user message content if available
@@ -230,7 +220,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     # Add messages to session with metadata
                     add_messages_to_session(
                         session_id, 
-                        user_content,  # Use transcribed text instead of "[Audio Input]"
+                        user_content,
                         text_output, 
                         response_audio,
                         message_metadata
