@@ -55,8 +55,8 @@ ND II is an AI assistant designed for autonomous vehicles that provides natural 
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/yourusername/ndii-voice-assistant.git
-   cd ndii-voice-assistant
+   git clone https://github.com/@your_username/AI-Autonomous-Vehicle.git
+   cd AI-Autonomous-Vehicle
    ```
 
 2. **Set up environment**
@@ -69,7 +69,10 @@ ND II is an AI assistant designed for autonomous vehicles that provides natural 
 
 3. **Create PostgreSQL database**
 
+   
    Install PostgreSQL and pgvector extension, then create a database:
+
+   *MUST DO*, Guide: https://github.com/pgvector/pgvector?tab=readme-ov-file#windows
    
    ```bash
    createdb ndii_db
@@ -108,12 +111,16 @@ ND II is an AI assistant designed for autonomous vehicles that provides natural 
 
    Open your browser to `http://localhost:8000`
 
+9. **Optional: Opik Evaluation**
+
+   https://github.com/comet-ml/opik
+
 ## Development
 
 ### Project Structure
 
 ```
-ndii-voice-assistant/
+AI-Autonomous-Vehicle/
 ├── main.py              # Main FastAPI application
 ├── chatbot.py           # Core assistant logic
 ├── vector_store.py      # Vector database implementation
