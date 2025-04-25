@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Request, Form, WebSocket
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, Request, Form, WebSocket, UploadFile, File
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
@@ -38,6 +38,33 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory=config.TEMPLATE_DIR)
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
+
+@app.post("/audio")
+async def handle_audio_upload(request: Request):
+    audio_bytes = await request.body()
+
+    logger.info(f"Received audio file from Unreal, size: {len(audio_bytes)} bytes")
+
+    # Convert to base64 and continue as usual
+    import base64
+    audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+    text_output, response_audio_base64 = await nd_ii.send_message(
+        audio_base64,
+        "wav",
+        config.TEXT,
+        config.AUDIO
+    )
+
+    if not response_audio_base64:
+        return JSONResponse(status_code=200, content={"message": text_output})
+
+    response_bytes = base64.b64decode(response_audio_base64)
+    save_path = os.path.join(config.PERSIST_DIRECTORY, "response.wav")
+    with open(save_path, "wb") as f:
+        f.write(response_bytes)
+
+    return FileResponse(save_path, media_type="audio/wav")
 
 def process_nd_ii_response(response):
     """Process NDII response and extract text and audio data"""
