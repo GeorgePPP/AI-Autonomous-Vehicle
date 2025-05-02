@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, WebSocket
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
@@ -149,6 +149,33 @@ def home(request: Request):
         "welcome_message": config.WELCOME_MESSAGE,
         "max_recording_duration": config.MAX_RECORDING_DURATION,
     })
+
+@app.post("/audio")
+async def handle_audio_upload(request: Request):
+    audio_bytes = await request.body()
+
+    logger.info(f"Received audio file from Unreal, size: {len(audio_bytes)} bytes")
+
+    # Convert to base64 and continue as usual
+    import base64
+    audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+    text_output, response_audio_base64 = await nd_ii.send_message(
+        audio_base64,
+        "wav",
+        config.TEXT,
+        config.AUDIO
+    )
+
+    if not response_audio_base64:
+        return JSONResponse(status_code=200, content={"message": text_output})
+
+    response_bytes = base64.b64decode(response_audio_base64)
+    save_path = os.path.join(config.PERSIST_DIRECTORY, "response.wav")
+    with open(save_path, "wb") as f:
+        f.write(response_bytes)
+
+    return FileResponse(save_path, media_type="audio/wav")
 
 @app.get("/_chat_messages.html", response_class=HTMLResponse)
 async def get_chat_messages(request: Request, session_id: str):
