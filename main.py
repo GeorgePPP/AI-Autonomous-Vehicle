@@ -160,7 +160,7 @@ async def handle_audio_upload(request: Request):
     import base64
     audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
 
-    text_output, response_audio_base64 = await nd_ii.send_message(
+    text_output, response_audio_base64, _ = await nd_ii.send_message(
         audio_base64,
         "wav",
         config.TEXT,
