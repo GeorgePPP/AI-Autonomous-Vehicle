@@ -171,7 +171,7 @@ async def handle_audio_upload(request: Request):
         return JSONResponse(status_code=200, content={"message": text_output})
 
     response_bytes = base64.b64decode(response_audio_base64)
-    save_path = os.path.join(config.PERSIST_DIRECTORY, "response.wav")
+    save_path = os.path.join("response.wav")
     with open(save_path, "wb") as f:
         f.write(response_bytes)
 
