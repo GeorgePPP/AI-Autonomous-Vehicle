@@ -136,17 +136,34 @@ async def save_chat_to_file(session_id: str):
         return False
 
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request):
+async def home(request: Request):
     session_id = str(uuid.uuid4())
     sessions[session_id] = {
         "messages": [],
         "created_at": datetime.now()
     }
-    logger.info(f"New session created: {session_id}")    
+    logger.info(f"New session created: {session_id}")  
+
+    welcome_prompt_audio_base64 = await nd_ii.generate_speech(
+        text=config.WELCOME_PROMPT,
+        voice="nova",
+        format="wav"
+    )
+
+    text_output, audio_base64, _ = await nd_ii.send_message(
+        audio_base64=welcome_prompt_audio_base64,
+        audio_format="wav",
+        text_config={"model": "gpt-4o", "temperature": 0.6},
+        audio_config={"voice": "nova", "format": "wav"}
+    )
+
+    logger.info(f"Welcome audio length: {len(audio_base64)}")
+
     return templates.TemplateResponse("index.html", {
         "request": request,
         "session_id": session_id,
-        "welcome_message": config.WELCOME_MESSAGE,
+        "welcome_message": text_output,
+        "welcome_audio": audio_base64,
         "max_recording_duration": config.MAX_RECORDING_DURATION,
     })
 

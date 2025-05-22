@@ -17,7 +17,7 @@ AUDIO = {
 
 # PostgreSQL vector database configuration
 PGVECTOR = {
-    "connection_string": "postgresql://postgres:1234@localhost:5432/ndii_db",
+    "connection_string": "postgresql://postgres:test1234@localhost:5432/ndii_db",
     "table_name": "document_embeddings",
     "embedding_dim": 1536,  # Dimension for OpenAI text-embedding-3-large
     "index_method": "hnsw",  # Options: 'hnsw' (faster but approximate), 'ivfflat' (balance), or None (exact but slower)
@@ -58,6 +58,9 @@ MAX_RECORDING_DURATION = 60  # Maximum recording duration in seconds
 
 # Welcome message
 WELCOME_MESSAGE = "Hello! I'm your autonomous vehicle assistant. Press the microphone button to speak to me."
+
+# Welcome prompt
+WELCOME_PROMPT = "Welcome the passanger by greeting them, introducing yourself, indicating the starting point, destination and today's weather, and asking if they need any assistance. Use a friendly and cheerful tone. "
 
 # Template and static directories
 TEMPLATE_DIR = "templates"
