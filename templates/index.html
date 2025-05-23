@@ -65,12 +65,12 @@
         });
     </script>
 
-    {% if welcome_audio %}
+    {% if greeting_audio %}
     <script>
         // Create and play audio element
         (function() {
             const audio = new Audio();
-            audio.src = 'data:audio/wav;base64,{{ welcome_audio }}';
+            audio.src = 'data:audio/wav;base64,{{ greeting_audio }}';
             
             // Set volume and play
             audio.volume = 1.0;

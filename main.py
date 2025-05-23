@@ -25,10 +25,26 @@ sessions = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global nd_ii
+    global nd_ii, greeting_audio_base64, greeting_text_output
+
     api_key = get_api_key()
     nd_ii = await NDII.create_db(api_key, max_history=4, rag_config=config.RAG)  # Keep only last 2 exchanges
     
+    # Generate greeting audio after DB initialization
+    logger.info("Generating greeting audio after DB initialization")
+    greeting_prompt_audio_base64 = await nd_ii.generate_speech(
+        text=config.GREETING_PROMPT,
+        voice="nova",
+        format="wav"
+    )
+
+    greeting_text_output, greeting_audio_base64, _ = await nd_ii.send_message(
+        audio_base64=greeting_prompt_audio_base64,
+        audio_format="wav",
+        text_config={"model": "gpt-4o", "temperature": 0.6},
+        audio_config={"voice": "nova", "format": "wav"}
+    )
+
     # Yield control back to FastAPI
     yield
     
@@ -144,26 +160,11 @@ async def home(request: Request):
     }
     logger.info(f"New session created: {session_id}")  
 
-    welcome_prompt_audio_base64 = await nd_ii.generate_speech(
-        text=config.WELCOME_PROMPT,
-        voice="nova",
-        format="wav"
-    )
-
-    text_output, audio_base64, _ = await nd_ii.send_message(
-        audio_base64=welcome_prompt_audio_base64,
-        audio_format="wav",
-        text_config={"model": "gpt-4o", "temperature": 0.6},
-        audio_config={"voice": "nova", "format": "wav"}
-    )
-
-    logger.info(f"Welcome audio length: {len(audio_base64)}")
-
     return templates.TemplateResponse("index.html", {
         "request": request,
         "session_id": session_id,
-        "welcome_message": text_output,
-        "welcome_audio": audio_base64,
+        "greeting_message": greeting_text_output,
+        "greeting_audio": greeting_audio_base64,
         "max_recording_duration": config.MAX_RECORDING_DURATION,
     })
 

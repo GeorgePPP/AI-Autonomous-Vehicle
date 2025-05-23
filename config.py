@@ -56,11 +56,11 @@ SESSION_MAX_AGE = 86400  # Session expiration time in seconds (24 hours)
 # Audio recording configuration
 MAX_RECORDING_DURATION = 60  # Maximum recording duration in seconds
 
-# Welcome message
-WELCOME_MESSAGE = "Hello! I'm your autonomous vehicle assistant. Press the microphone button to speak to me."
+# Greeting message
+GREETING_MESSAGE = "Hello! I'm your autonomous vehicle assistant. Press the microphone button to speak to me."
 
-# Welcome prompt
-WELCOME_PROMPT = "Welcome the passanger by greeting them, introducing yourself, indicating the starting point, destination and today's weather, and asking if they need any assistance. Use a friendly and cheerful tone. "
+# Greeting prompt
+GREETING_PROMPT = "Welcome the passanger by greeting them, introducing yourself, mentioning that the destination is Terminal 1 at Changi Airport and today's weather is sunny and pleasant, and asking if they need any assistance. Use a friendly and cheerful tone. "
 
 # Template and static directories
 TEMPLATE_DIR = "templates"
