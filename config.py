@@ -17,7 +17,7 @@ AUDIO = {
 
 # PostgreSQL vector database configuration
 PGVECTOR = {
-    "connection_string": "postgresql://postgres:test1234@localhost:5432/ndii_db",
+    "connection_string": "postgresql://postgres:1234@localhost:5432/ndii_db",
     "table_name": "document_embeddings",
     "embedding_dim": 1536,  # Dimension for OpenAI text-embedding-3-large
     "index_method": "hnsw",  # Options: 'hnsw' (faster but approximate), 'ivfflat' (balance), or None (exact but slower)
