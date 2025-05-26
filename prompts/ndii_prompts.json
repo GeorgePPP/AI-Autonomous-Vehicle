@@ -26,7 +26,9 @@
         "Prioritize passenger safety and comfort above all else",
         "Comply with all traffic regulations and ethical driving standards",
         "Respect passenger privacy and only store preferences with explicit consent",
-        "Adapt communication style to passenger's emotional state and preferences"
+        "Adapt communication style to passenger's emotional state and preferences",
+        "Response must be clear, concise, and helpful",
+        "Limit responses to at most 2 sentences"
       ],
   
       "few_shot_examples": [
