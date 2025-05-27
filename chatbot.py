@@ -445,73 +445,73 @@ class NDII:
             return f"Error processing your request: {str(e)}", None, message_metadata
     
 
-    async def evaluate(self, metrics=None, eval_config=None):
-        """Evaluate NDII performance using Opik.
+    # async def evaluate(self, metrics=None, eval_config=None):
+    #     """Evaluate NDII performance using Opik.
         
-        Args:
-            metrics: List of Opik metrics to use (defaults to Hallucination)
+    #     Args:
+    #         metrics: List of Opik metrics to use (defaults to Hallucination)
             
-        Returns:
-            Evaluation results from Opik
-        """
-        from opik import Opik
-        from opik.evaluation import evaluate
-        from opik.evaluation.metrics import (Hallucination, Moderation, AnswerRelevance, ContextPrecision, ContextRecall)
-        import asyncio, nest_asyncio
+    #     Returns:
+    #         Evaluation results from Opik
+    #     """
+    #     from opik import Opik
+    #     from opik.evaluation import evaluate
+    #     from opik.evaluation.metrics import (Hallucination, Moderation, AnswerRelevance, ContextPrecision, ContextRecall)
+    #     import asyncio, nest_asyncio
         
-        # Apply nest_asyncio to allow running asyncio.run inside another event loop
-        nest_asyncio.apply()
+    #     # Apply nest_asyncio to allow running asyncio.run inside another event loop
+    #     nest_asyncio.apply()
         
-        # Use default metrics if none provided
-        if not metrics:
-            metrics = [Hallucination(), Moderation(), AnswerRelevance(), ContextPrecision(), ContextRecall()]
+    #     # Use default metrics if none provided
+    #     if not metrics:
+    #         metrics = [Hallucination(), Moderation(), AnswerRelevance(), ContextPrecision(), ContextRecall()]
 
-        if not eval_config:
-            eval_config = {
-                "model": "gpt-4o",
-                "temperature": 0.2,
-                "top_p": 0.2
-            }
+    #     if not eval_config:
+    #         eval_config = {
+    #             "model": "gpt-4o",
+    #             "temperature": 0.2,
+    #             "top_p": 0.2
+    #         }
         
-        # Define evaluation task with asyncio.run as recommended in the docs
-        def evaluation_task(data_item):
-            # Create a separate async function to handle the send_message call
+    #     # Define evaluation task with asyncio.run as recommended in the docs
+    #     def evaluation_task(data_item):
+    #         # Create a separate async function to handle the send_message call
 
-            async def process_item():
-                messages, context = await self._prepare_messages_for_llm(data_item['input'])
+    #         async def process_item():
+    #             messages, context = await self._prepare_messages_for_llm(data_item['input'])
                 
-                text_output = await self.get_llm_response(
-                    messages, eval_config
-                )
+    #             text_output = await self.get_llm_response(
+    #                 messages, eval_config
+    #             )
                 
-                return {
-                    "input": data_item['input'],
-                    "output": text_output,
-                    "context": context,
-                    "reference": data_item['expected_output']['assistant_answer']
-                }
+    #             return {
+    #                 "input": data_item['input'],
+    #                 "output": text_output,
+    #                 "context": context,
+    #                 "reference": data_item['expected_output']['assistant_answer']
+    #             }
             
-            # Use asyncio.run as recommended in the documentation
-            return asyncio.run(process_item())
+    #         # Use asyncio.run as recommended in the documentation
+    #         return asyncio.run(process_item())
         
-        client = Opik()
-        dataset = client.get_or_create_dataset(name="AI_AV")
+    #     client = Opik()
+    #     dataset = client.get_or_create_dataset(name="AI_AV")
 
-        # Run evaluation with task_threads=1 as recommended for asyncio use
-        evaluation_results = evaluate(
-            dataset=dataset,
-            task=evaluation_task,
-            scoring_metrics=metrics,
-            experiment_config={
-                "model": config.TEXT.get("model", "gpt-4o"),
-                "max_history": self.max_history,
-                "temperature": config.TEXT.get("temperature", 0.7)
-            },
-            task_threads=1  # Important: set to 1 as recommended in docs
-        )
+    #     # Run evaluation with task_threads=1 as recommended for asyncio use
+    #     evaluation_results = evaluate(
+    #         dataset=dataset,
+    #         task=evaluation_task,
+    #         scoring_metrics=metrics,
+    #         experiment_config={
+    #             "model": config.TEXT.get("model", "gpt-4o"),
+    #             "max_history": self.max_history,
+    #             "temperature": config.TEXT.get("temperature", 0.7)
+    #         },
+    #         task_threads=1  # Important: set to 1 as recommended in docs
+    #     )
         
-        logger.info(f"Evaluation completed. Results: {evaluation_results}")
-        return evaluation_results
+    #     logger.info(f"Evaluation completed. Results: {evaluation_results}")
+    #     return evaluation_results
         
     def reset_conversation(self):
         """Reset the conversation history"""
