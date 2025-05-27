@@ -4,6 +4,7 @@ import io
 import logging
 from typing import List, Dict, Optional, Any, Tuple
 from pathlib import Path
+from datetime import datetime, timedelta
 
 from openai import AsyncOpenAI
 from utils import prepare_audio_message
@@ -42,6 +43,8 @@ class NDII:
         self.current_context = {}
         self.max_history = max_history
         self.vector_store = vector_store
+        self.trip_start_time = datetime.now()
+        self.trip_duration = timedelta(minutes=15)
     
     @classmethod
     async def create_db(cls, api_key: str, max_history: int = 2, rag_config: dict = None):
@@ -407,6 +410,14 @@ class NDII:
         # Prepare messages for the LLM API
         messages, _ = await self._prepare_messages_for_llm(user_query)
         
+        # Inject dynamic time status before calling the LLM
+        if hasattr(self, "trip_start_time"):
+            time_status = self.get_time_remaining()
+            messages.insert(1, {
+                "role": "system",
+                "content": f"The trip is {time_status}. "
+            })
+
         # Store retrieved context information
         if self.current_context:
             message_metadata["retrieved_chunks"] = self.current_context.get("chunks", [])
@@ -515,4 +526,15 @@ class NDII:
             logger.info("Vector store connections closed")
         except Exception as e:
             logger.error(f"Error closing vector store: {e}")
+
+    def get_time_remaining(self):
+        if self.trip_start_time is None:
+            return "Timer not started"
+        
+        elapsed = datetime.now() - self.trip_start_time
+        remaining = max(0, 15 - int(elapsed.total_seconds() // 60))
+        if remaining <= 0:
+            return "Trip complete"
+        
+        return f"{remaining} minutes remaining"
 

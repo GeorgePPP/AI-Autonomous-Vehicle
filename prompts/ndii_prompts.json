@@ -59,6 +59,13 @@
           "assistant_locution": "I understand your concern. We're taking the fastest route and should arrive in 12 minutes. Would you like me to suggest some breathing exercises?",
           "assistant_illocution": "Validate emotion + provide reassurance + offer support",
           "assistant_perlocution": "Passenger feels understood and less anxious"
+        },
+        {
+          "context": "Passenger asks how long the trip will take",
+          "user": "How many minutes are left for the trip?",
+          "assistant_locution": "We have about 12 minutes left in our journey.",
+          "assistant_illocution": "Informing the passenger of remaining time",
+          "assistant_perlocution": "Passenger feels informed and reassured"
         }
       ]
     }
