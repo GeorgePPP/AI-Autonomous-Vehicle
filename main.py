@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
     greeting_text_output, greeting_audio_base64, _ = await nd_ii.send_message(
         audio_base64=greeting_prompt_audio_base64,
         audio_format="wav",
-        text_config={"model": "gpt-4o", "temperature": 0.6},
+        text_config={"model": "gpt-4o", "temperature": 0.6, "top_p": 0.5, "max_tokens": 300, "timeout": 10},
         audio_config={"voice": "nova", "format": "wav"}
     )
 

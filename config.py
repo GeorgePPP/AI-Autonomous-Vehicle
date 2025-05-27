@@ -4,7 +4,9 @@
 TEXT = {
     "model": "gpt-4o",
     "temperature": 0.6,
-    "top_p": 0.5
+    "top_p": 0.5,
+    "max_tokens": 300,
+    "timeout": 10,  # Timeout for text generation in seconds
 }
 
 # Audio configuration
