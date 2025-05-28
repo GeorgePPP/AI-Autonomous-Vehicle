@@ -8,8 +8,6 @@ import logging
 from typing import Optional
 from dotenv import load_dotenv
 from pydub import AudioSegment
-import numpy as np
-import wave
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -189,14 +187,3 @@ async def prepare_audio_message(base64_audio: str, audio_format: str = 'wav') ->
     except Exception as e:
         logger.error(f"Audio preparation failed: {str(e)}", exc_info=True)
         raise
-
-def generate_silence(filename="silence.wav", duration_sec=1, sample_rate=16000):
-    """Generate a silent WAV file of specified duration and sample rate."""
-    n_samples = duration_sec * sample_rate
-    silence = np.zeros(n_samples, dtype=np.int16)
-
-    with wave.open(filename, "w") as f:
-        f.setnchannels(1)
-        f.setsampwidth(2)  # 16-bit samples
-        f.setframerate(sample_rate)
-        f.writeframes(silence.tobytes())

@@ -11,9 +11,8 @@ import json
 import uuid
 import logging
 from datetime import datetime, timedelta
-import wave
 
-from utils import get_api_key, test_base_64_string, generate_silence
+from utils import get_api_key, test_base_64_string
 from chatbot import NDII
 import config
 
@@ -27,8 +26,6 @@ sessions = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global nd_ii, greeting_audio_base64, greeting_text_output
-
-    generate_silence("silence.wav")
 
     api_key = get_api_key()
     nd_ii = await NDII.create_db(api_key, max_history=4, rag_config=config.RAG)  # Keep only last 2 exchanges
@@ -192,29 +189,11 @@ async def handle_audio_upload(request: Request):
         return JSONResponse(status_code=200, content={"message": text_output})
 
     response_bytes = base64.b64decode(response_audio_base64)
-
-    def concatenate_wav_files(file1_path, file2_path, output_path):
-        with wave.open(file1_path, 'rb') as wav1, wave.open(file2_path, 'rb') as wav2:
-            if wav1.getparams() != wav2.getparams():
-                raise ValueError("WAV files must have the same format to concatenate")
-            
-            output = wave.open(output_path, 'wb')
-            output.setparams(wav1.getparams())
-            output.writeframes(wav1.readframes(wav1.getnframes()))
-            output.writeframes(wav2.readframes(wav2.getnframes()))
-            output.close()
-
-    # Save response to disk
-    save_path = "response.wav"
+    save_path = os.path.join("response.wav")
     with open(save_path, "wb") as f:
         f.write(response_bytes)
 
-    # Concatenate with 1s silence
-    concatenated_path = "response_with_silence.wav"
-    concatenate_wav_files(save_path, "silence.wav", concatenated_path)
-
-    # Return the final audio with silence
-    return FileResponse(concatenated_path, media_type="audio/wav")
+    return FileResponse(save_path, media_type="audio/wav")
 
 @app.get("/_chat_messages.html", response_class=HTMLResponse)
 async def get_chat_messages(request: Request, session_id: str):
