@@ -189,9 +189,11 @@ async def handle_audio_upload(request: Request):
     )
 
     if not response_audio_base64:
+        logger.warning("No audio received from OpenAI TTS")
         return JSONResponse(status_code=200, content={"message": text_output})
 
     response_bytes = base64.b64decode(response_audio_base64)
+    logger.info(f"Decoded audio length: {len(response_bytes)} bytes")
 
     def concatenate_wav_files(file1_path, file2_path, output_path):
         with wave.open(file1_path, 'rb') as wav1, wave.open(file2_path, 'rb') as wav2:
@@ -211,6 +213,13 @@ async def handle_audio_upload(request: Request):
     save_path = "response.wav"
     with open(save_path, "wb") as f:
         f.write(response_bytes)
+
+    with wave.open("response.wav", "rb") as w:
+        print("Channels:", w.getnchannels())
+        print("Sample width:", w.getsampwidth())
+        print("Frame rate:", w.getframerate())
+        print("Number of frames:", w.getnframes())
+        print("Params:", w.getparams())
 
     # Concatenate with 1s silence
     concatenated_path = "response_with_silence.wav"
