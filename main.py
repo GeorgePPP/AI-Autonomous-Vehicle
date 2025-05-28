@@ -13,7 +13,6 @@ import logging
 from datetime import datetime, timedelta
 import wave
 from pydub import AudioSegment
-import io
 
 from utils import get_api_key, test_base_64_string, generate_silence
 from chatbot import NDII
