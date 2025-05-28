@@ -1,5 +1,13 @@
+# Data Files
 *.wav
 *.env
 *.ipynb
 *.pyc
+data/
+
+# Logging
+*.log
+
+# Data Directory
 Audio_Recorder_Python/
+chatlog/

@@ -5,3 +5,7 @@ asyncio
 dotenv
 pydub
 openai
+psycopg[c]
+langchain_community
+langchain
+opik

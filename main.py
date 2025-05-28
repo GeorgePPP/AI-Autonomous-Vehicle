@@ -6,33 +6,54 @@ from starlette.websockets import WebSocketDisconnect
 from contextlib import asynccontextmanager
 
 import uvicorn
-import base64
 import os
 import json
 import uuid
-import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+import wave
 
-from utils import get_api_key, test_base_64_string
+from utils import get_api_key, test_base_64_string, generate_silence
 from chatbot import NDII
 import config
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Initialize ND II with API key
-api_key = get_api_key()
 
 # Store active sessions
 sessions = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global nd_ii
+    global nd_ii, greeting_audio_base64, greeting_text_output
+
+    generate_silence("silence.wav")
+
     api_key = get_api_key()
-    nd_ii = await NDII.create_db(api_key, max_history=2)  # Keep only last 2 exchanges
+    nd_ii = await NDII.create_db(api_key, max_history=4, rag_config=config.RAG)  # Keep only last 2 exchanges
+    
+    # Generate greeting audio after DB initialization
+    logger.info("Generating greeting audio after DB initialization")
+    greeting_prompt_audio_base64 = await nd_ii.generate_speech(
+        text=config.GREETING_PROMPT,
+        voice="nova",
+        format="wav"
+    )
+
+    greeting_text_output, greeting_audio_base64, _ = await nd_ii.send_message(
+        audio_base64=greeting_prompt_audio_base64,
+        audio_format="wav",
+        text_config={"model": "gpt-4o", "temperature": 0.6, "top_p": 0.5, "max_tokens": 300, "timeout": 10},
+        audio_config={"voice": "nova", "format": "wav"}
+    )
+
+    # Yield control back to FastAPI
     yield
+    
+    # Clean up resources when shutting down
+    await nd_ii.close()
+    logger.info("Application shutdown, resources cleaned up")
 
 # Initialize FastAPI app
 app = FastAPI(lifespan=lifespan)
@@ -77,42 +98,164 @@ def process_nd_ii_response(response):
         
     return text_output, audio_base64
 
-def add_messages_to_session(session_id, user_content, bot_content, bot_audio=None):
+def add_messages_to_session(session_id, user_content, bot_content, bot_audio=None, message_metadata=None):
     """Add user and bot messages to a session"""
     if session_id not in sessions:
         logger.warning(f"Session {session_id} not found when adding messages")
         return False
-    # Add user message
-    sessions[session_id]["messages"].append({
+    
+    # Add user message (user_content now contains the transcribed query)
+    user_message = {
         "sender": "user",
         "content": user_content,
         "timestamp": datetime.now()
-    })
+    }
+    
+    sessions[session_id]["messages"].append(user_message)
     
     # Add bot message
-    sessions[session_id]["messages"].append({
+    bot_message = {
         "sender": "bot",
         "content": bot_content,
         "audio_base64": bot_audio,
         "timestamp": datetime.now()
-    })
+    }
+    
+    sessions[session_id]["messages"].append(bot_message)
+    
+    # Store RAG information with the session if available
+    if message_metadata and message_metadata.get("retrieved_chunks"):
+        # Store just the first 2-3 chunks to avoid excessive data
+        max_chunks = 3
+        shortened_chunks = []
+        for i, chunk in enumerate(message_metadata["retrieved_chunks"][:max_chunks]):
+            # Truncate long chunks to avoid massive log files
+            max_length = 500
+            shortened_chunk = chunk[:max_length] + "..." if len(chunk) > max_length else chunk
+            
+            # Add metadata if available
+            chunk_info = {"content": shortened_chunk}
+            if message_metadata.get("chunk_metadata") and i < len(message_metadata["chunk_metadata"]):
+                chunk_info["metadata"] = message_metadata["chunk_metadata"][i]
+                
+            shortened_chunks.append(chunk_info)
+            
+        # Add the RAG data to the session
+        if "rag_data" not in sessions[session_id]:
+            sessions[session_id]["rag_data"] = []
+            
+        sessions[session_id]["rag_data"].append({
+            "for_message_index": len(sessions[session_id]["messages"]) - 2,  # Index of the user message
+            "chunks": shortened_chunks,
+            "timestamp": datetime.now()
+        })
+    
     return True
 
+async def save_chat_to_file(session_id: str):
+    """Save chat messages to a JSON file in the chatlog directory"""
+    if session_id not in sessions:
+        logger.warning(f"Session {session_id} not found when saving chat log")
+        return False
+        
+    # Create chatlog directory if it doesn't exist
+    os.makedirs("chatlog", exist_ok=True)
+    
+    # Use a single file per session
+    filename = f"chatlog/session_{session_id}.json"
+    
+    # Create a clean copy of messages without audio data
+    messages = []
+    for msg in sessions[session_id]["messages"]:
+        msg_copy = msg.copy()
+        if "audio_base64" in msg_copy:
+            del msg_copy["audio_base64"]
+        messages.append(msg_copy)
+
+    chat_data = {
+        "session_id": session_id,
+        "timestamp": datetime.now().isoformat(),
+        "messages": messages
+    }
+    
+    # Add RAG data if available
+    if "rag_data" in sessions[session_id]:
+        chat_data["rag_data"] = sessions[session_id]["rag_data"]
+    
+    # Write to file
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(chat_data, f, indent=2, default=str)
+        logger.info(f"Chat log saved to {filename}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving chat log: {e}")
+        return False
+
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request):
-    # Generate a unique session ID
+async def home(request: Request):
     session_id = str(uuid.uuid4())
     sessions[session_id] = {
         "messages": [],
         "created_at": datetime.now()
     }
-    logger.info(f"New session created: {session_id}")    
+    logger.info(f"New session created: {session_id}")  
+
     return templates.TemplateResponse("index.html", {
         "request": request,
         "session_id": session_id,
-        "welcome_message": config.WELCOME_MESSAGE,
+        "greeting_message": greeting_text_output,
+        "greeting_audio": greeting_audio_base64,
         "max_recording_duration": config.MAX_RECORDING_DURATION,
     })
+
+@app.post("/audio")
+async def handle_audio_upload(request: Request):
+    audio_bytes = await request.body()
+
+    logger.info(f"Received audio file from Unreal, size: {len(audio_bytes)} bytes")
+
+    # Convert to base64 and continue as usual
+    import base64
+    audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+
+    text_output, response_audio_base64, _ = await nd_ii.send_message(
+        audio_base64,
+        "wav",
+        config.TEXT,
+        config.AUDIO
+    )
+
+    if not response_audio_base64:
+        return JSONResponse(status_code=200, content={"message": text_output})
+
+    response_bytes = base64.b64decode(response_audio_base64)
+
+    def concatenate_wav_files(file1_path, file2_path, output_path):
+        with wave.open(file1_path, 'rb') as wav1, wave.open(file2_path, 'rb') as wav2:
+            print("response.wav params:", wav1.getparams())
+            print("silence.wav params:", wav2.getparams())
+            
+            if wav1.getparams() != wav2.getparams():
+                raise ValueError("WAV files must have the same format to concatenate")
+            
+            output = wave.open(output_path, 'wb')
+            output.setparams(wav1.getparams())
+            output.writeframes(wav1.readframes(wav1.getnframes()))
+            output.writeframes(wav2.readframes(wav2.getnframes()))
+            output.close()
+
+    # Save response to disk
+    save_path = "response.wav"
+    with open(save_path, "wb") as f:
+        f.write(response_bytes)
+
+    # Concatenate with 1s silence
+    concatenated_path = "response_with_silence.wav"
+    concatenate_wav_files(save_path, "silence.wav", concatenated_path)
+
+    # Return the final audio with silence
+    return FileResponse(concatenated_path, media_type="audio/wav")
 
 @app.get("/_chat_messages.html", response_class=HTMLResponse)
 async def get_chat_messages(request: Request, session_id: str):
@@ -168,20 +311,30 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     continue
                     
                 try:
-                    # Send to ND II for processing - now returns tuple of (text, audio_base64)
-                    response = await nd_ii.send_message(
-                        audio_base64,
-                        audio_input_format,
-                        config.TEXT,
-                        config.AUDIO
-                    )                    
+                    # Send to ND II for processing - now returns tuple of (text, audio_base64, message_metadata)
+                    text_output, response_audio, message_metadata = await nd_ii.send_message(
+                        audio_base64=audio_base64,
+                        audio_format=audio_input_format,
+                        text_config=config.TEXT,
+                        audio_config=config.AUDIO
+                    )
                     
-                    # Process the response - unpack the tuple
-                    text_output, response_audio = process_nd_ii_response(response)
                     logger.info(f"Response received - Audio output: {'Yes' if response_audio else 'No'}")
                     
-                    # Add messages to session
-                    add_messages_to_session(session_id, "[Audio Input]", text_output, response_audio)
+                    # Use the actual transcription as the user message content if available
+                    user_content = message_metadata.get("transcribed_query", "[Audio Input]")
+                    
+                    # Add messages to session with metadata
+                    add_messages_to_session(
+                        session_id, 
+                        user_content,
+                        text_output, 
+                        response_audio,
+                        message_metadata
+                    )
+                    
+                    # Save chat log after processing message
+                    await save_chat_to_file(session_id)
                     print(f"Added to session - Audio data present: {bool(response_audio)}")
                     
                     # Send success response
@@ -210,6 +363,8 @@ async def cleanup_sessions():
     ]
     
     for session_id in expired_sessions:
+        # Save chat log before removing the session
+        await save_chat_to_file(session_id)
         del sessions[session_id]
     
     if expired_sessions:

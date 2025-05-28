@@ -8,6 +8,8 @@ import logging
 from typing import Optional
 from dotenv import load_dotenv
 from pydub import AudioSegment
+import numpy as np
+import wave
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -187,3 +189,14 @@ async def prepare_audio_message(base64_audio: str, audio_format: str = 'wav') ->
     except Exception as e:
         logger.error(f"Audio preparation failed: {str(e)}", exc_info=True)
         raise
+
+def generate_silence(filename="silence.wav", duration_seconds=1, sample_rate=24000):
+    """Generate a silent WAV file matching OpenAI's TTS audio format"""
+    n_samples = int(duration_seconds * sample_rate)
+    silence = np.zeros(n_samples, dtype=np.int16)  # 16-bit PCM mono
+
+    with wave.open(filename, 'w') as wav_file:
+        wav_file.setnchannels(1)         # Mono
+        wav_file.setsampwidth(2)         # 2 bytes per sample (16-bit PCM)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(silence.tobytes())

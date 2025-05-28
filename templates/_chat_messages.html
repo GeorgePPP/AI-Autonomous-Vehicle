@@ -32,6 +32,6 @@
     {% endfor %}
 {% else %}
     <div class="message bot-message">
-        {{ welcome_message|default("Hello! I'm your autonomous vehicle assistant. How can I help you today?") }}
+        {{ greeting_message|default("Hello! I'm your autonomous vehicle assistant. How can I help you today?") }}
     </div>
 {% endif %}
