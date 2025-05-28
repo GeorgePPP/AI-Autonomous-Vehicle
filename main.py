@@ -12,6 +12,7 @@ import uuid
 import logging
 from datetime import datetime, timedelta
 import wave
+from pydub import AudioSegment
 
 from utils import get_api_key, test_base_64_string, generate_silence
 from chatbot import NDII
@@ -209,17 +210,15 @@ async def handle_audio_upload(request: Request):
             output.writeframes(wav2.readframes(wav2.getnframes()))
             output.close()
 
-    # Save response to disk
-    save_path = "response.wav"
-    with open(save_path, "wb") as f:
-        f.write(response_bytes)
+    # Fix malformed WAV using pydub
 
-    with wave.open("response.wav", "rb") as w:
-        print("Channels:", w.getnchannels())
-        print("Sample width:", w.getsampwidth())
-        print("Frame rate:", w.getframerate())
-        print("Number of frames:", w.getnframes())
-        print("Params:", w.getparams())
+    # Load from in-memory byte stream
+    sound = AudioSegment.from_file(io.BytesIO(response_bytes), format="wav")
+
+    # Export clean WAV
+    save_path = "response.wav"
+    sound.export(save_path, format="wav")
+
 
     # Concatenate with 1s silence
     concatenated_path = "response_with_silence.wav"
