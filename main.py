@@ -195,9 +195,6 @@ async def handle_audio_upload(request: Request):
 
     def concatenate_wav_files(file1_path, file2_path, output_path):
         with wave.open(file1_path, 'rb') as wav1, wave.open(file2_path, 'rb') as wav2:
-            print("response.wav params:", wav1.getparams())
-            print("silence.wav params:", wav2.getparams())
-            
             if wav1.getparams() != wav2.getparams():
                 raise ValueError("WAV files must have the same format to concatenate")
             
