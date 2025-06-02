@@ -45,6 +45,7 @@ class NDII:
         self.vector_store = vector_store
         self.trip_start_time = datetime.now()
         self.trip_duration = timedelta(minutes=15)
+        self.day_of_week = "Wednesday"
     
     @classmethod
     async def create_db(cls, api_key: str, max_history: int = 2, rag_config: dict = None):
@@ -411,12 +412,15 @@ class NDII:
         messages, _ = await self._prepare_messages_for_llm(user_query)
         
         # Inject dynamic time status before calling the LLM
-        if hasattr(self, "trip_start_time"):
-            time_status = self.get_time_remaining()
-            messages.insert(1, {
-                "role": "system",
-                "content": f"The trip is {time_status}. "
-            })
+        time_status = self.get_time_remaining()
+
+        # Inject trip time context
+        current_time_str, minutes_elapsed = self.get_trip_elapsed_time()
+
+        messages.insert(1, {
+            "role": "system",
+            "content": f"The trip started at 2:30 PM. It's now {current_time_str}, {minutes_elapsed} minutes into the journey. The trip is {time_status}. Today's day of week is {self.day_of_week}."
+        })
 
         # Store retrieved context information
         if self.current_context:
@@ -537,4 +541,12 @@ class NDII:
             return "Trip complete"
         
         return f"{remaining} minutes remaining"
+    
+    def get_trip_elapsed_time(self):
+        now = datetime.now()
+        elapsed = now - self.trip_start_time
+        total_minutes = int(elapsed.total_seconds() / 60)
+        current_trip_time = datetime.strptime("14:30", "%H:%M") + timedelta(minutes=total_minutes)
+        return current_trip_time.strftime("%I:%M %p"), total_minutes
+
 
