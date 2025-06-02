@@ -422,6 +422,16 @@ class NDII:
             "content": f"The trip started at 2:30 PM. It's now {current_time_str}, {minutes_elapsed} minutes into the journey. The trip is {time_status}. Today's day of week is {self.day_of_week}."
         })
 
+        messages.insert(1, {
+            "role": "system",
+            "content": f"ND does not have radio or music capabilities. "
+        })
+
+        messages.insert(1, {
+            "role": "system",
+            "content": f"The destination cannot be changed. The destination is Terminal 1 at Changi Airport."
+        })
+
         # Store retrieved context information
         if self.current_context:
             message_metadata["retrieved_chunks"] = self.current_context.get("chunks", [])
